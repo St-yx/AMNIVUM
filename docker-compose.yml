@@ -1,0 +1,7 @@
+services:
+  qdrant:
+    image: ${VECTOR_DB_IMAGE}
+    ports:
+      - "${VECTOR_DB_PORT}:6333"
+    volumes:
+      - ${VECTOR_DB_VOLUME}

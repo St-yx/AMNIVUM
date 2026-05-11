@@ -1,0 +1,10 @@
+sentence-transformers
+transformers
+torch
+qdrant-client
+python-dotenv
+numpy
+
+[dev]
+pytest
+pytest-asyncio

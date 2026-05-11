@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: amnivum
+Version: 0.1.0
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: sentence-transformers
+Requires-Dist: transformers
+Requires-Dist: torch
+Requires-Dist: qdrant-client
+Requires-Dist: python-dotenv
+Requires-Dist: numpy
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Dynamic: license-file

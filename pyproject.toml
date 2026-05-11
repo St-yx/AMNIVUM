@@ -1,0 +1,26 @@
+[project]
+name = "amnivum"
+version = "0.1.0"
+requires-python = ">=3.14"
+
+dependencies = [
+    "sentence-transformers",
+    "transformers",
+    "torch",
+    "qdrant-client",
+    "python-dotenv",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.setuptools.packages.find]
+include = ["nucleus*"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
