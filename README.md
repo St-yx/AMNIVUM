@@ -1,3 +1,8 @@
+<p align="right">
+  <strong>🇬🇧 English</strong> |
+  <a href="README.de.md">🇩🇪 Deutsch</a>
+</p>
+
 # VIOLET — **V**irtual **I**ntelligence **O**bserving to **L**earn, **E**volving to **T**hink
 
 **Meet Violet** - a locally hosted AI "companion" with persistent memory, dynamic emotional state, and a modular architecture designed to grow over time. The project separates core functions radically: the language model itself is just the voice. Everything else is built around it, mirroring the human brain.
@@ -22,7 +27,7 @@ AMNIVUM is the technical stack that "produces" Violet. It consists of independen
               └────────────┬─┘  └─┬────────────┘
                            │      │
                        ┌───▼──────▼───┐
-                       │      LLM     │  Language center
+                       │     LLM      │  Language center
                        └──────────────┘
 ```
 
