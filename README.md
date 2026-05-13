@@ -1,6 +1,6 @@
 # VIOLET — **V**irtual **I**ntelligence **O**bserving to **L**earn, **E**volving to **T**hink
 
-**Meet Violet** - a locally hosted AI "companion" with persistent memory, dynamic emotional state, and a modular architecture designed to grow over time. The project separates core functions radically: the language model itself is just the voice. Everything else is built around it.
+**Meet Violet** - a locally hosted AI "companion" with persistent memory, dynamic emotional state, and a modular architecture designed to grow over time. The project separates core functions radically: the language model itself is just the voice. Everything else is built around it, mirroring the human brain.
 
 ---
 
