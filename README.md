@@ -6,7 +6,7 @@
 
 ## Architecture Overview
 
-AMNIVUM is the technical stack that produces Violet. It consists of independent modules communicating asynchronously via a central message queue. No module calls another directly — they publish and subscribe, which keeps latency predictable and the system extensible.
+AMNIVUM is the technical stack that "produces" Violet. It consists of independent modules communicating asynchronously via a central message queue. No module calls another directly — they publish and subscribe, which keeps latency predictable and the system extensible.
 
 ```
                        ┌───────────────┐
@@ -28,7 +28,7 @@ AMNIVUM is the technical stack that produces Violet. It consists of independent 
 
 Each module is a Python asyncio task. The shared message queue is the only communication channel.
 
-*The architecture ist still under heavy Development. architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
+*The project ist still under heavy Development. Architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
 
 **Current Code: 796 lines Python**
 
@@ -42,7 +42,7 @@ KORTEX is the orchestrator of the turn cycle. It receives plain text from the us
 
 KORTEX does not interpret — it assembles. All semantic and emotional context is provided by other modules.
 
-**Status:** Specification complete. Input handler implemented.
+**Status:** Architecture 99% specified. Implementation at 25% (Input handler experimental).
 
 ---
 
