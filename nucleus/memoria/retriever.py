@@ -79,12 +79,10 @@ class MemoriaRetriever:
  
         topic_vecs = self._extract_topics(embeddings, texts)
 
-
         # == LONG: query per topic ============================================== #
         topic_results = await asyncio.gather(
             *[self._retrieve_topic(vec) for vec in topic_vecs]
         )
-
 
         # == MID: query per turn ================================================ #
         mid_chunks = await self._query_mid(topic_vecs[0], current_turn_index)
@@ -207,7 +205,6 @@ class MemoriaRetriever:
         chunks.extend(guaranteed)
         seen_ids |= {c.qdrant_id for c in guaranteed}
 
-
         # == 3. Rest of candidates by similarity ================================ #
         remaining = LONG_CANDIDATES - len(chunks)
         if remaining > 0:
@@ -240,8 +237,7 @@ class MemoriaRetriever:
         loop,
     ) -> list[RetrievedChunk]:
         
-        # Multiple parallel similarity queries- one for each knowledge source
-
+        # Multiple parallel similarity queries - one for each knowledge source
         guarantees = [
             ("user0", GUARANTEE_USER0),     # AI
             ("user1", GUARANTEE_USER1),     # User
@@ -341,10 +337,11 @@ class MemoriaRetriever:
  
         return chunks
     
+
     # =========================================================================== #
     # Helpers                                                                     #
     # =========================================================================== #
-
+    
     def _point_to_chunk(self, point, source: str, ref_vec: np.ndarray) -> RetrievedChunk:
         payload = point.payload or {}
         vec = getattr(point, "vector", None)

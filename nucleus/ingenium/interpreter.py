@@ -1,14 +1,14 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import os
 import torch
 import numpy as np
 from nucleus.shared import NucleusQueues, Message, MessageType
-import os
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
 
 LABELS = ["anger", "contempt", "disgust", "fear", "frustration",
           "gratitude", "joy", "love", "neutral", "sadness", "surprise"]
 
 classifier_model = os.getenv("CLASSIFIER_MODEL")
-
 if classifier_model is None:
     raise ValueError("CLASSIFIER_MODEL is not set")
 
@@ -32,7 +32,7 @@ class Interpreter:
             if message.type == MessageType.CHUNK_READY:
                 chunks = message.payload["chunks"]
                 texts = [c.text for c in chunks]
-                turn_tags = self._classify(texts)
+                turn_tags = self.classify(texts)
 
                 await self.queues.kortex_assembly.put(
                     Message(

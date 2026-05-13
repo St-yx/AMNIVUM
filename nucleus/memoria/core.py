@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from nucleus.shared import Message, MessageType, NucleusQueues, Services
 
 load_dotenv()
-mergeThreshold = os.getenv("MERGE_THRESHOLD")
-maxChunkWords = os.getenv("MAX_CHUNK_WORDS")
-minChunkWords = os.getenv("MIN_CHUNK_WORDS")
+mergeThreshold = os.getenv("MEMORIA_MERGE_THRESHOLD")
+maxChunkWords = os.getenv("MEMORIA_MAX_CHUNK_WORDS")
+minChunkWords = os.getenv("MEMORIA_MIN_CHUNK_WORDS")
 
 @dataclass
 class Chunk:
