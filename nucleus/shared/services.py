@@ -1,9 +1,9 @@
-from sentence_transformers import SentenceTransformer
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
-from dotenv import load_dotenv
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import os
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
+from qdrant_client.models import Distance, VectorParams
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ classifier_model = os.getenv("CLASSIFIER_MODEL")
 class Services:
     def __init__(self):
         self.embedder = None
-        self.vectordb = None
+        self.vecdb = None
 
     async def initialize(self):
         print("Loading Embedding-Model...")
@@ -32,17 +32,17 @@ class Services:
         self.classifier_model.eval()
 
         print("Connecting Vector Storage...")
-        self.vectordb = QdrantClient(host=host, port=port)
+        self.vecdb = QdrantClient(host=host, port=port)
 
         await self._ensure_collections()
 
         print("Services ready.")
     
     async def _ensure_collections(self):
-        existing = [c.name for c in self.vectordb.get_collections().collections]
+        existing = [c.name for c in self.vecdb.get_collections().collections]
 
         for collection in (collection_long, collection_mid):
-            self.vectordb = self.vectordb.create_collection(
+            self.vecdb = self.vecdb.create_collection(
                 collection_name=collection,
                 vectors_config=VectorParams(
                     size=vector_size,

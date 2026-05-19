@@ -1,5 +1,6 @@
+# amnivum/kortex/input_handler.py
 import asyncio
-from nucleus.shared import Message, MessageType
+from nucleus.shared import Message, MessageType, generate_turn_id
 
 class KortexInput:
     def __init__(self, queue: asyncio.Queue):

@@ -11,27 +11,30 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 
 load_dotenv()
 
-BUFFER_SIZE              = int(os.getenv("MEMORIA_BUFFER_SIZE", "15"))
+BUFFER_SIZE              = int(os.getenv("MEMORIA_BUFFER_SIZE", "20"))
 
-LONG_CANDIDATES          = int(os.getenv("MEMORIA_LONG_CANDIDATES", "30"))
+# == Candidate pool ===================================================== #
+LONG_CANDIDATES_PRIMARY  = int(os.getenv("MEMORIA_LONG_CANDIDATES_PRIMARY", "30"))
+LONG_CANDIDATES_SIDE     = int(os.getenv("MEMORIA_LONG_CANDIDATES_SIDE", "10"))
 MID_CANDIDATES           = int(os.getenv("MEMORIA_MID_CANDIDATES", "30"))
 MID_RECENT_TURNS         = int(os.getenv("MEMORIA_MID_RECENT_TURNS", "5"))
 
-CLUSTER_MATCH_TRESHOLD   = float(os.getenv("MEMORIA_CLUSTER_MATCH_TRESHOLD", "0.45"))
+# == Topic detection ==================================================== #
 TOPIC_DISTANCE_THRESHOLD = float(os.getenv("MEMORIA_TOPIC_DISTANCE_THRESHOLD", "0.40"))
 TOPIC_MAX                = int(os.getenv("MEMORIA_TOPIC_MAX", "3"))
 
-GUARANTEE_USER0          = int(os.getenv("MEMORIA_GUARANTEE_MODEL", "3"))   # AI
-GUARANTEE_USER1          = int(os.getenv("MEMORIA_GUARANTEE_USER", "8"))    # User
+# == Source guarantees ================================================== #
+GUARANTEE_USER0          = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
+GUARANTEE_USER1          = int(os.getenv("MEMORIA_GUARANTEE_USER1", "8"))    # User
 GUARANTEE_WORLD          = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # World
 
 
 @dataclass
 class RetrievedChunk:
-    qdrant_id:          str
+    vecdb_id:          str
     text:               str
     source:             str         # "LONG" | "MID"
-    knowledge_source:   str         # "user0" | "user1" | "user2" | "unknown"
+    knowledge_source:   str         # "user0" | "user1" | "world" | "unknown"
     similarity:         float
     importance:         float
     cluster_id:         str | None  # None for MID
@@ -60,8 +63,8 @@ class RetrievalResult:
 
 # == Retriever ========================================================== #
 class MemoriaRetriever:
-    def __init__(self, qdrant: QdrantClient, graph_path:Path):
-        self.qdrant     = qdrant
+    def __init__(self, vecdb: QdrantClient, graph_path:Path):
+        self.vecdb     = vecdb
         self.graph_path = graph_path
         self._graph     = self._load_graph()
 
@@ -81,7 +84,8 @@ class MemoriaRetriever:
 
         # == LONG: query per topic ============================================== #
         topic_results = await asyncio.gather(
-            *[self._retrieve_topic(vec) for vec in topic_vecs]
+            *[self._retrieve_topic(vec, primary=(i == 0)) 
+              for i, vec in enumerate(topic_vecs)]
         )
 
         # == MID: query per turn ================================================ #
@@ -93,9 +97,9 @@ class MemoriaRetriever:
         )
 
     
-    # =========================================================================== #
-    # Topic recognition                                                           #
-    # =========================================================================== #
+    # ======================================================================= #
+    # Topic recognition                                                       #
+    # ======================================================================= #
 
     def _extract_topics(
         self,
@@ -141,7 +145,7 @@ class MemoriaRetriever:
     # LONG-Retrieval per topic                                                    #
     # =========================================================================== #
     
-    async def _retrieve_topic(self, topic_vec: np.ndarray) -> TopicResult:
+    async def _retrieve_topic(self, topic_vec: np.ndarray, primary: bool) -> TopicResult:
         cluster_id = self._find_cluster(topic_vec)
         chunks: list[RetrievedChunk] = []
  
@@ -167,9 +171,6 @@ class MemoriaRetriever:
             if sim > best_sim:
                 best_sim = sim
                 best_id  = cluster_id
-        
-        if best_sim < CLUSTER_MATCH_TRESHOLD:
-            return None
  
         return best_id
  
@@ -177,46 +178,50 @@ class MemoriaRetriever:
         self,
         topic_vec:  np.ndarray,
         cluster_id: str,
+        primary: bool,
     ) -> list[RetrievedChunk]:
         loop   = asyncio.get_event_loop()
         chunks: list[RetrievedChunk] = []
+        limit = LONG_CANDIDATES_PRIMARY if primary else LONG_CANDIDATES_SIDE
 
         # == 1. Conflict Candidates (Must-Have, before guarantees) ============== #
-        conflicts = await loop.run_in_executor(
-            None,
-            lambda: self.qdrant.scroll(
-                collection_name="LONG",
-                scroll_filter=Filter(must=[
-                    FieldCondition(key="cluster_id",         match=MatchValue(value=cluster_id)),
-                    FieldCondition(key="conflict_candidate", match=MatchValue(value=True)),
-                ]),
-                with_vectors=True,
-            )[0]
-        )
-        for point in conflicts:
-            chunks.append(self._point_to_chunk(point, "LONG", topic_vec))
+        if primary:
+            conflicts = await loop.run_in_executor(
+                None,
+                lambda: self.vectordb.scroll(
+                    collection_name="LONG",
+                    scroll_filter=Filter(must=[
+                        FieldCondition(key="cluster_id",         match=MatchValue(value=cluster_id)),
+                        FieldCondition(key="conflict_candidate", match=MatchValue(value=True)),
+                    ]),
+                    with_vectors=True,
+                )[0]
+            )
+            for point in conflicts:
+                chunks.append(self._point_to_chunk(point, "LONG", topic_vec))
 
-        seen_ids = {c.qdrant_id for c in chunks}
+        seen_ids = {c.vecdb_id for c in chunks}
 
         # == 2. Source guarantees parallel ====================================== #
-        guaranteed = await self._query_long_with_guarantees(
-            topic_vec, cluster_id, seen_ids, loop
-        )
-        chunks.extend(guaranteed)
-        seen_ids |= {c.qdrant_id for c in guaranteed}
+        if primary:
+            guaranteed = await self._query_long_with_guarantees(
+                topic_vec, cluster_id, seen_ids, loop
+            )
+            chunks.extend(guaranteed)
+            seen_ids |= {c.vecdb_id for c in guaranteed}
 
         # == 3. Rest of candidates by similarity ================================ #
-        remaining = LONG_CANDIDATES - len(chunks)
+        remaining = limit - len(chunks)
         if remaining > 0:
             sim_results = await loop.run_in_executor(
                 None,
-                lambda: self.qdrant.search(
+                lambda: self.vecdb.search(
                     collection_name="LONG",
                     query_vector=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id", match=MatchValue(value=cluster_id)),
                     ]),
-                    limit=LONG_CANDIDATES,
+                    limit=limit,
                     with_payload=True,
                     with_vectors=False,
                 )
@@ -224,14 +229,14 @@ class MemoriaRetriever:
             for point in sim_results:
                 if str(point.id) not in seen_ids:
                     chunks.append(self._point_to_chunk(point, "LONG", topic_vec))
-                    if len(chunks) >= LONG_CANDIDATES:
+                    if len(chunks) >= limit:
                         break
 
         return chunks
     
     async def _query_long_with_guarantees(
         self,
-        topic_vec:     np.ndarray,
+        topic_vec:    np.ndarray,
         cluster_id:   str,
         exclude_ids:  set[str],
         loop,
@@ -247,14 +252,14 @@ class MemoriaRetriever:
         async def query_source(knowledge_source: str, limit: int) -> list[RetrievedChunk]:
             results = await loop.run_in_executor(
                 None,
-                lambda ks=knowledge_source, lim=limit: self.qdrant.search(
+                lambda: self.vecdb.search(
                     collection_name="LONG",
                     query_vector=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id",      match=MatchValue(value=cluster_id)),
-                        FieldCondition(key="knowledge_source",match=MatchValue(value=ks)),
+                        FieldCondition(key="knowledge_source",match=MatchValue(value=knowledge_source)),
                     ]),
-                    limit=lim,
+                    limit=limit,
                     with_payload=True,
                     with_vectors=False,
                 )
@@ -274,15 +279,15 @@ class MemoriaRetriever:
         out: list[RetrievedChunk] = []
         for group in results:
             for chunk in group:
-                if chunk.qdrant_id not in seen:
+                if chunk.vecdb_id_id not in seen:
                     out.append(chunk)
-                    seen.add(chunk.qdrant_id)
+                    seen.add(chunk.vecdb_id_id)
         
         return out
     
 
     # =========================================================================== #
-    # LONG-Retrieval per topic                                                    #
+    # MID-Retrieval                                                               #
     # =========================================================================== #
 
     async def _query_mid(
@@ -300,7 +305,7 @@ class MemoriaRetriever:
         # Similarity
         sim_results = await loop.run_in_executor(
             None,
-            lambda: self.qdrant.search(
+            lambda: self.vecdb.search(
                 collection_name="MID",
                 query_vector=topic_vec.tolist(),
                 limit=MID_CANDIDATES,
@@ -318,7 +323,7 @@ class MemoriaRetriever:
         min_turn = max(0, current_turn_index - MID_RECENT_TURNS)
         recent_results = await loop.run_in_executor(
             None,
-            lambda: self.qdrant.scroll(
+            lambda: self.vecdb.scroll(
                 collection_name="MID",
                 scroll_filter=Filter(must=[
                     FieldCondition(
@@ -348,7 +353,7 @@ class MemoriaRetriever:
         sim = self._cosine_similarity(ref_vec, np.array(vec)) if vec is not None else 0.0
 
         return RetrievedChunk(
-            qdrant_id=          str(point.id),
+            vecdb_id=           str(point.id),
             text=               payload.get("text", ""),
             source=             source,
             knowledge_source=   payload.get("knowledge_source", "unknown"),

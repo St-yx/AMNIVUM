@@ -7,10 +7,10 @@ load_dotenv()
 
 BUFFER_SIZE     = int(os.getenv("MEMORIA_BUFFER_SIZE", "20"))
 
-MID_CAP         = int(os.getenv("MEMORIA_MID_CAP", "5"))   # max MID-Slots in Buffer
-GUARANTEE_WORLD = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # World
-GUARANTEE_USER0 = int(os.getenv("MEMORIA_GUARANTEE_MODEL", "3"))   # AI
-GUARANTEE_USER1 = int(os.getenv("MEMORIA_GUARANTEE_USER", "5"))    # User
+MID_CAP         = int(os.getenv("MEMORIA_MID_CAP", "20"))   # max MID-Slots in Buffer
+GUARANTEE_WORLD = int(os.getenv("MEMORIA_GUARANTEE_USER1", "2"))   # World
+GUARANTEE_USER0 = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
+GUARANTEE_USER1 = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "5"))    # User
 
 SLOTS_TOPIC1    = int(os.getenv("MEMORIA_SLOTS_TOPIC1", "10"))
 SLOTS_SIDE      = int(os.getenv("MEMORIA_SLOTS_SIDE", "5"))
@@ -169,9 +169,9 @@ class MemoriaShort:
         # == 1. Slots with conflicts ============================================ #
         for pool in by_source.values():
             for c in pool:
-                if c.conflict_candidate and c.qdrant_id not in seen_ids:
+                if c.conflict_candidate and c.vecdb_id not in seen_ids:
                     selected.append(c)
-                    seen_ids.add(c.qdrant_id)
+                    seen_ids.add(c.vecdb_id)
  
         # == 2. AI (user0) ====================================================== #
         s = slot_map["ai"]
@@ -179,30 +179,36 @@ class MemoriaShort:
         remaining = s.allocated - already
         if remaining > 0:
             candidates = [c for c in by_source["user0"]
-                          if c.qdrant_id not in seen_ids]
+                          if c.vecdb_id not in seen_ids]
             picked = self._pick_by_importance(candidates, remaining)
             selected.extend(picked)
-            seen_ids |= {c.qdrant_id for c in picked}
+            seen_ids |= {c.vecdb_id for c in picked}
  
-        # == World ============================================================== #
+        # == 3. World =========================================================== #
         s = slot_map["world"]
         candidates = [c for c in by_source["world"]
-                      if c.qdrant_id not in seen_ids]
+                      if c.vecdb_id not in seen_ids]
         picked = self._pick_by_importance(candidates, s.allocated)
         selected.extend(picked)
-        seen_ids |= {c.qdrant_id for c in picked}
+        seen_ids |= {c.vecdb_id for c in picked}
  
-        # == User (user1) ======================================================= #
+        # == 4. User (user1) ==================================================== #
         s = slot_map["user"]
         candidates = [c for c in by_source["user1"]
-                      if c.qdrant_id not in seen_ids]
+                      if c.vecdb_id not in seen_ids]
         picked = self._pick_by_importance(candidates, s.allocated)
         selected.extend(picked)
-        seen_ids |= {c.qdrant_id for c in picked}
+        seen_ids |= {c.vecdb_id for c in picked}
+
+        # == 5. Side (topic 2 + 3) ============================================== #
+        candidates = [c for c in side_chunks if c.vecdb_id not in seen_ids]
+        picked = self._pick_by_importance(candidates, side_allocated)
+        selected.extend(picked)
+        seen_ids |= {c.vecdb_id for c in picked}
  
-        # == MID ================================================================ #
+        # == 6. MID ============================================================= #
         s = slot_map["mid"]
-        candidates = [c for c in result.mid_chunks if c.qdrant_id not in seen_ids]
+        candidates = [c for c in result.mid_chunks if c.vecdb_id not in seen_ids]
         picked = self._pick_by_importance(candidates, s.allocated)
         selected.extend(picked)
  

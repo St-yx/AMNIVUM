@@ -1,8 +1,8 @@
 import asyncio
-from nucleus.shared import NucleusQueues, Services
 from nucleus.kortex import KortexInput
 from nucleus.memoria import MemoriaCore
 from nucleus.ingenium import Interpreter
+from nucleus.shared import NucleusQueues, Services
 
 async def main():
     services = Services()

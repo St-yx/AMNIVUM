@@ -5,7 +5,7 @@
 
 # VIOLET — **V**irtual **I**ntelligence **O**bserving to **L**earn, **E**volving to **T**hink
 
-**Violet** ist ein lokal gehosteter KI-Companion mit persistentem Gedächtnis, dynamischem Gefühlszustand und einer modularen Architektur, die auf Wachstum über Zeit ausgelegt ist. Das Projekt trennt Kernfunktionen radikal voneinander: Das Sprachmodell selbst ist nur die Stimme. Alles andere ist darum herum gebaut — in Anlehnung an das menschliche Gehirn.
+**Violet** ist ein lokal gehosteter "KI-Companion" mit persistentem Gedächtnis, dynamischem Gefühlszustand und einer modularen Architektur, die auf Wachstum über Zeit ausgelegt ist. Das Projekt trennt Kernfunktionen radikal voneinander: Das Sprachmodell selbst ist nur die Stimme. Alles andere ist darum herum gebaut — in Anlehnung an das menschliche Gehirn.
 
 ---
 
