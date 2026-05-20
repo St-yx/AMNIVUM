@@ -68,7 +68,7 @@ Das aktive Kontextfenster für KORTEX. Hält ca. 20 Chunks, die nach jedem Turn 
 
 #### Buffer-Slot-Logik
 
-Der Buffer füllt sich über eine zweistufige "Schablone". Pass 1 garantiert Mindestrepräsentation pro Wissensquelle (User, Welt, KI, MID) und verteilt ungenutzten Kapazität nach unten weiter. Pass 2 füllt verbleibende Slots dynamisch per Round-Robin über verfügbare Pools. Themen 2 und 3 (Satelliten-Cluster) erhalten eine feste Seitenallokation. Das Ergebnis ist ein Buffer der immer so voll ist wie vorhandene Daten erlauben, ohne eine einzelne Quelle künstlich aufzublähen.
+Der Buffer füllt sich über eine zweistufige "Schablone". Pass 1 garantiert Mindestrepräsentation pro Wissensquelle (User, Welt, KI, MID) und verteilt ungenutzte Kapazität nach unten weiter. Pass 2 füllt verbleibende Slots dynamisch per Round-Robin über verfügbare Pools. Themen 2 und 3 (Satelliten-Cluster) erhalten eine feste Seitenallokation. Das Ergebnis ist ein Buffer der immer so voll ist wie vorhandene Daten erlauben, ohne eine einzelne Quelle künstlich aufzublähen.
 
 #### Chunking-Pipeline
 

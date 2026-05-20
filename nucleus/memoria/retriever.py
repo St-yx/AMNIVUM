@@ -31,7 +31,7 @@ GUARANTEE_WORLD          = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # Wo
 
 @dataclass
 class RetrievedChunk:
-    vecdb_id:          str
+    vecdb_id:           str
     text:               str
     source:             str         # "LONG" | "MID"
     knowledge_source:   str         # "user0" | "user1" | "world" | "unknown"
@@ -40,12 +40,14 @@ class RetrievedChunk:
     cluster_id:         str | None  # None for MID
     clean_tags:         dict        # MID: raw_tags
     conflict_candidate: bool = False
+    topic_label:        str | None = None
 
 
 @dataclass
 class TopicResult:
     topic_vec:  np.ndarray              # Weighted avg vector of topic group
     cluster_id: str | None              # None = unknown topic, no LONG entry
+    label:      str | None              # Word to describe topic for KORTEX
     chunks:     list[RetrievedChunk] = field(default_factory=list)
 
 
@@ -84,8 +86,8 @@ class MemoriaRetriever:
 
         # == LONG: query per topic ============================================== #
         topic_results = await asyncio.gather(
-            *[self._retrieve_topic(vec, primary=(i == 0)) 
-              for i, vec in enumerate(topic_vecs)]
+            *[self._retrieve_topic(vec, indices, turn_chunks, primary=(i == 0)) 
+              for i, (vec, indices) in enumerate(topic_vecs)]
         )
 
         # == MID: query per turn ================================================ #
@@ -136,7 +138,8 @@ class MemoriaRetriever:
             group_embs  = matrix[indices]
             group_words = np.array([max(len(texts[i].split()), 1) for i in indices])
             weights     = group_words / group_words.sum()
-            topic_vecs.append(np.average(group_embs, axis=0, weights=weights))
+            vec         = np.average(group_embs, axis=0, weights=weights)
+            topic_vecs.append((vec, list(indices)))
  
         return topic_vecs
 
@@ -145,16 +148,28 @@ class MemoriaRetriever:
     # LONG-Retrieval per topic                                                    #
     # =========================================================================== #
     
-    async def _retrieve_topic(self, topic_vec: np.ndarray, primary: bool) -> TopicResult:
+    async def _retrieve_topic(self, 
+        topic_vec: np.ndarray, 
+        topic_indices: list[int],
+        turn_chunks: list,
+        primary:bool
+    ) -> TopicResult:
         cluster_id = self._find_cluster(topic_vec)
         chunks: list[RetrievedChunk] = []
  
+        # Label: try graph, then fallback
+        label = None
         if cluster_id:
-            chunks = await self._query_long_cluster(topic_vec, cluster_id)
+            label = self._graph[cluster_id].get("label")
+            chunks = await self._query_long_cluster(topic_vec, cluster_id, primary)
+
+        if not label:
+            label = self._extract_label(turn_chunks, topic_indices)
  
         return TopicResult(
             topic_vec=topic_vec,
             cluster_id=cluster_id,  # None if no match
+            label=label,
             chunks=chunks,          # empty if no match
         )
  
@@ -377,3 +392,10 @@ class MemoriaRetriever:
             return json.loads(self.graph_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
+        
+    def _extract_label(self, turn_chunks: list, indices: list[int]) -> str | None:
+        if not indices or not turn_chunks:
+            return None
+        best = max(indices, key=lambda i: len(turn_chunks[i].text.split()))
+        words = [w for w in turn_chunks[best].text.split() if len(w) > 3]
+        return words[0].lower() if words else None

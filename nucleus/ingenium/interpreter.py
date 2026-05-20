@@ -1,7 +1,8 @@
 import os
 import torch
 import numpy as np
-from nucleus.shared import NucleusQueues, Message, MessageType
+from torch.nn import Module
+from nucleus.shared import NucleusQueues, Message, MessageType, Services
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 
@@ -15,15 +16,10 @@ if classifier_model is None:
 classifier_threshold = float(os.getenv("CLASSIFIER_THRESHOLD", "0.3"))
 
 class Interpreter:
-    def __init__(self, queues: NucleusQueues):
+    def __init__(self, queues: NucleusQueues, services: Services):
         self.queues = queues
-        self.tokenizer = None
-        self.model = None
-
-    def initialize(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(classifier_model)
-        self.model = AutoModelForSequenceClassification.from_pretrained(classifier_model)
-        self.model.eval()
+        self.tokenizer: AutoTokenizer = services.classifier_tokenizer
+        self.model: Module = services.classifier_model
 
     async def run(self):
         while True:
@@ -32,7 +28,7 @@ class Interpreter:
             if message.type == MessageType.CHUNK_READY:
                 chunks = message.payload["chunks"]
                 texts = [c.text for c in chunks]
-                turn_tags = self.classify(texts)
+                turn_tags = self._classify(texts)
 
                 await self.queues.kortex_assembly.put(
                     Message(

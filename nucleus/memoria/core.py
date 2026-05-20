@@ -48,33 +48,44 @@ class MemoriaCore:
                 # 2. Calculate turn vector
                 turn_vec = self._turn_vec(chunks)
 
-                # 3. Check for topic change, update window
+                # 3. Check for topic change
                 topic_switch = self._check_topic_switch(turn_vec)
+
+                # 4. Update window
                 self._update_window(turn_vec)
 
-                # 4. Retrieval
-                result = await self.retriever.retrieve(chunks, self.turn_index)
-
-                # 5. Fill buffer
-                selected = self.short.update(result)
-
-                # 6. ´Hold turn chunks for MID-writing (with INGENIUM-Tags)
-                self.short.hold_turn_chunks(chunks, message.turn_id)
-
-                # 7. Chunks to INGENIUM for classification
+                # 5. First INGENIUM-Pass for turn classification
                 await self.queues.ingenium_in.put(
                     Message(
                         type=MessageType.CHUNK_READY,
+                        source="memoria",
+                        payload={"chunks": chunks},   # ← raw chunks, unselected
+                        turn_id=message.turn_id
+                    )
+                )
+                # 6. Retrieval
+                result = await self.retriever.retrieve(chunks, self.turn_index)
+
+                # 7. Fill buffer
+                selected = self.short.update(result)
+
+                # 8. Hold turn chunks for MID-writing (with INGENIUM-Tags from 5.)
+                self.short.hold_turn_chunks(chunks, message.turn_id)
+
+                # 9. Buffer to INGENIUM for Affect Update 1
+                await self.queues.ingenium_in.put(
+                    Message(
+                        type=MessageType.BUFFER_READY,
                         source="memoria",
                         payload={"chunks": selected},
                         turn_id=message.turn_id
                     )
                 )
                 
-                # 8. Buffer to KORTEX
+                # 10. Buffer to KORTEX
                 await self.queues.kortex_assembly.put(
                     Message(
-                        type=MessageType.CHUNK_READY,
+                        type=MessageType.BUFFER_READY,
                         source="memoria",
                         payload={
                             "chunks": selected,

@@ -8,9 +8,9 @@ load_dotenv()
 BUFFER_SIZE     = int(os.getenv("MEMORIA_BUFFER_SIZE", "20"))
 
 MID_CAP         = int(os.getenv("MEMORIA_MID_CAP", "20"))   # max MID-Slots in Buffer
-GUARANTEE_WORLD = int(os.getenv("MEMORIA_GUARANTEE_USER1", "2"))   # World
+GUARANTEE_WORLD = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # World
 GUARANTEE_USER0 = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
-GUARANTEE_USER1 = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "5"))    # User
+GUARANTEE_USER1 = int(os.getenv("MEMORIA_GUARANTEE_USER1", "5"))   # User
 
 SLOTS_TOPIC1    = int(os.getenv("MEMORIA_SLOTS_TOPIC1", "10"))
 SLOTS_SIDE      = int(os.getenv("MEMORIA_SLOTS_SIDE", "5"))
@@ -59,9 +59,11 @@ class MemoriaShort:
     def update(self, result: RetrievalResult) -> list[RetrievedChunk]:
         side_chunks: list[RetrievedChunk] = []
         for i, topic in enumerate(result.topics):
-            if i in (1, 2):
+            for chunk in topic.chunks:
+                chunk.topic_label = topic.label # set label for all topics
+            if i in (1, 2): # searches for Topic2/3 at indexes 1/2
                 side_chunks.extend(topic.chunks)
-
+            
         side_available = len(side_chunks)
         side_allocated = min(side_available, SLOTS_SIDE)
         side_gap = SLOTS_SIDE - side_allocated
