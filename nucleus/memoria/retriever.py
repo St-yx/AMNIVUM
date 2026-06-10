@@ -38,9 +38,8 @@ class RetrievedChunk:
     similarity:         float
     importance:         float
     cluster_id:         str | None  # None for MID
-    clean_tags:         dict        # MID: raw_tags
+    tags:               dict        # LONG: clean_tags, MID: raw_tags
     conflict_candidate: bool = False
-    topic_label:        str | None = None
 
 
 @dataclass
@@ -53,8 +52,9 @@ class TopicResult:
 
 @dataclass
 class RetrievalResult:
-    topics:     list[TopicResult]       # 1–3 Einträge, nach Gruppengröße sortiert
-    mid_chunks: list[RetrievedChunk] = field(default_factory=list)
+    topics:             list[TopicResult]       # 1–3 entrys, sorted by group size
+    mid_chunks:         list[RetrievedChunk] = field(default_factory=list)
+    turn_chunk_labels:  dict[int, str | None] = field(default_factory=dict)
  
     @property
     def has_knowledge(self) -> bool:
@@ -82,20 +82,29 @@ class MemoriaRetriever:
         embeddings = [c.embedding for c in turn_chunks]
         texts      = [c.text      for c in turn_chunks]
  
-        topic_vecs = self._extract_topics(embeddings, texts)
+        topic_data = self._extract_topics(embeddings, texts)
 
         # == LONG: query per topic ============================================== #
         topic_results = await asyncio.gather(
             *[self._retrieve_topic(vec, indices, turn_chunks, primary=(i == 0)) 
-              for i, (vec, indices) in enumerate(topic_vecs)]
+              for i, (vec, indices) in enumerate(topic_data)]
         )
 
-        # == MID: query per turn ================================================ #
-        mid_chunks = await self._query_mid(topic_vecs[0], current_turn_index)
+        # turn_chunk_labels: index in turn_chunks → topic label
+        # built from topic_data indices + resolved labels from topic_results
+        turn_chunk_labels: dict[int, str | None] = {}
+        for(_, indices), topic in zip(topic_data, topic_results):
+            for idx in indices:
+                turn_chunk_labels[idx] = topic.label
+
+
+        # == MID: query per turn with larges topic vector as achor ============== #
+        mid_chunks = await self._query_mid(topic_data[0][0], current_turn_index)
  
         return RetrievalResult(
             topics=list(topic_results),
             mid_chunks=mid_chunks,
+            turn_chunk_labels=turn_chunk_labels,
         )
 
     
@@ -111,9 +120,8 @@ class MemoriaRetriever:
 
         # group chunks by Agglomerative Clustering (Cosine-Distance).
         # give one Weighted-Average-Vector per topic (max TOPIC_MAX).
-
         if len(embeddings) == 1:
-            return [embeddings[0]]
+            return [(embeddings[0], [0])]
  
         matrix = np.stack(embeddings)
  
@@ -203,7 +211,7 @@ class MemoriaRetriever:
         if primary:
             conflicts = await loop.run_in_executor(
                 None,
-                lambda: self.vectordb.scroll(
+                lambda: self.vecdb.scroll(
                     collection_name="LONG",
                     scroll_filter=Filter(must=[
                         FieldCondition(key="cluster_id",         match=MatchValue(value=cluster_id)),
@@ -294,9 +302,9 @@ class MemoriaRetriever:
         out: list[RetrievedChunk] = []
         for group in results:
             for chunk in group:
-                if chunk.vecdb_id_id not in seen:
+                if chunk.vecdb_id not in seen:
                     out.append(chunk)
-                    seen.add(chunk.vecdb_id_id)
+                    seen.add(chunk.vecdb_id)
         
         return out
     
@@ -375,7 +383,7 @@ class MemoriaRetriever:
             similarity=         getattr(point, "score", sim),
             importance=         payload.get("importance", 0.0),
             cluster_id=         payload.get("cluster_id"),
-            clean_tags=         payload.get("clean_tags") or payload.get("raw_tags") or {},
+            tags=         payload.get("clean_tags") or payload.get("raw_tags") or {},
             conflict_candidate= payload.get("conflict_candidate", False)
         )
     

@@ -10,19 +10,20 @@ from nucleus.shared import Message, MessageType, NucleusQueues, Services
 
 load_dotenv()
 
-MERGE_THRESHOLD = os.getenv("MEMORIA_MERGE_THRESHOLD", "0.75")
-MAX_CHUNK_WORDS = os.getenv("MEMORIA_MAX_CHUNK_WORDS", "50")
-MIN_CHUNK_WORDS = os.getenv("MEMORIA_MIN_CHUNK_WORDS", "5")
-NOVELTY_THRESHOLD = os.getenv("MEMORIA_NOVELTY_THRESHOLD", "0.85")
-TOPIC_SWITCH_THRESHOLD = float(os.getenv("MEMORIA_TOPIC_SWITCH_THRESHOLD", "0.65"))
-TOPIC_WINDOW_SIZE      = int(os.getenv("MEMORIA_TOPIC_WINDOW_SIZE",        "5"))
-GRAPH_PATH = Path(os.getenv("MEMORIA_GRAPH_PATH", "data/cluster_graph.json"))
+MERGE_THRESHOLD         = float(os.getenv("MEMORIA_MERGE_THRESHOLD", "0.75"))
+MAX_CHUNK_WORDS         = int(os.getenv("MEMORIA_MAX_CHUNK_WORDS", "50"))
+MIN_CHUNK_WORDS         = int(os.getenv("MEMORIA_MIN_CHUNK_WORDS", "5"))
+NOVELTY_THRESHOLD       = float(os.getenv("MEMORIA_NOVELTY_THRESHOLD", "0.85"))
+TOPIC_SWITCH_THRESHOLD  = float(os.getenv("MEMORIA_TOPIC_SWITCH_THRESHOLD", "0.65"))
+TOPIC_WINDOW_SIZE       = int(os.getenv("MEMORIA_TOPIC_WINDOW_SIZE",        "5"))
+GRAPH_PATH              = Path(os.getenv("MEMORIA_GRAPH_PATH", "data/cluster_graph.json"))
 
 
 @dataclass
 class Chunk:
-    text:       str
-    embedding:  np.ndarray # final embedding for vectorDB
+    text:        str
+    embedding:   np.ndarray # final embedding for vectorDB
+    topic_label: str | None = None # set after retrieve(), used by KORTEX/INGENIUM
 
 class MemoriaCore:
     def __init__(self, queues: NucleusQueues, services: Services):
@@ -59,30 +60,37 @@ class MemoriaCore:
                     Message(
                         type=MessageType.CHUNK_READY,
                         source="memoria",
-                        payload={"chunks": chunks},   # ← raw chunks, unselected
-                        turn_id=message.turn_id
-                    )
-                )
-                # 6. Retrieval
-                result = await self.retriever.retrieve(chunks, self.turn_index)
-
-                # 7. Fill buffer
-                selected = self.short.update(result)
-
-                # 8. Hold turn chunks for MID-writing (with INGENIUM-Tags from 5.)
-                self.short.hold_turn_chunks(chunks, message.turn_id)
-
-                # 9. Buffer to INGENIUM for Affect Update 1
-                await self.queues.ingenium_in.put(
-                    Message(
-                        type=MessageType.BUFFER_READY,
-                        source="memoria",
-                        payload={"chunks": selected},
+                        payload={"chunks": chunks},   # raw turn chunks
                         turn_id=message.turn_id
                     )
                 )
                 
-                # 10. Buffer to KORTEX
+                # 6. Retrieval
+                result = await self.retriever.retrieve(chunks, self.turn_index)
+
+                # 7. Stamp topic labels onto turn chunks
+                for i, chunk in enumerate(chunks):
+                    chunk.topic_label = result.turn_chunk_labels.get(i)
+
+                # 8. Fill buffer
+                selected = self.short.update(result)
+
+                # 9. Hold turn chunks for MID-writing (with INGENIUM-Tags from 5.)
+                self.short.hold_turn_chunks(chunks, message.turn_id)
+
+                # 10. Buffer to INGENIUM for Affect Update 1
+                await self.queues.ingenium_in.put(
+                    Message(
+                        type=MessageType.BUFFER_READY,
+                        source="memoria",
+                        payload={"chunks":      selected, # selected memory chunks (LONG/MID) from buffer
+                                 "turn_chunks": chunks,   # raw turn chunks with topic_label
+                        }, 
+                        turn_id=message.turn_id
+                    )
+                )
+                
+                # 11. Buffer to KORTEX
                 await self.queues.kortex_assembly.put(
                     Message(
                         type=MessageType.BUFFER_READY,
