@@ -30,8 +30,8 @@ class Interpreter:
 
             chunks = message.payload["chunks"]
 
-            texts       = [c["text"]        for c in chunks]
-            embeddings  = [c["embedding"]   for c in chunks]
+            texts       = [c.text       for c in chunks]
+            embeddings  = [c.embedding  for c in chunks]
 
             turn_tags = self._classify(texts)
 

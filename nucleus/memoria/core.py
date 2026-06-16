@@ -5,7 +5,8 @@ import numpy as np
 from pathlib import Path
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from nucleus.memoria import MemoriaShort, MemoriaRetriever
+from nucleus.memoria.short import MemoriaShort
+from nucleus.memoria.retriever import MemoriaRetriever
 from nucleus.shared import Message, MessageType, NucleusQueues, Services
 
 load_dotenv()
@@ -29,7 +30,7 @@ class MemoriaCore:
     def __init__(self, queues: NucleusQueues, services: Services):
         self.queues = queues
         self.embedder = services.embedder
-        self.vectordb = services.vectordb
+        self.vectordb = services.vecdb
         self.retriever = MemoriaRetriever(self.vectordb, GRAPH_PATH)
         self.short = MemoriaShort()
         self.turn_index = 0
@@ -113,7 +114,7 @@ class MemoriaCore:
             texts
         )
 
-    async def chunk(self, text: str) -> list[str]:
+    async def chunk(self, text: str) -> list[Chunk]:
         sentences = self._split_sentences(text)
 
         if not sentences:
@@ -162,22 +163,25 @@ class MemoriaCore:
                 # end current chunk
                 if len(current_text.split()) >= MIN_CHUNK_WORDS:
                     chunks.append(current_text)
-                else:
-                    # too short: append to next
+                elif merged_word_count <= MAX_CHUNK_WORDS:
+                    # too short: append to next (still within MAX)
                     next_text = current_text + " " + next_text
                     next_vec = (current_vec + next_vec) / 2
-                
+                else:
+                    # too short but merging would exceed MAX: emit as-is, let gate decide
+                    chunks.append(current_text)
+
                 current_text = next_text
                 current_vec = next_vec
 
         # last chunk
         if len(current_text.split()) >= MIN_CHUNK_WORDS:
             chunks.append(current_text)
-        elif chunks:
-            # too short: append to last
+        elif chunks and len(chunks[-1].split()) + len(current_text.split()) <= MAX_CHUNK_WORDS:
+            # too short: append to last (still within MAX)
             chunks[-1] = chunks[-1] + " " + current_text
         else:
-            # Edge cases: chunks empty, nothing to append - let gate decide
+            # too short but can't merge (no prior chunk or would exceed MAX) - let gate decide
             chunks.append(current_text)
         
         return chunks

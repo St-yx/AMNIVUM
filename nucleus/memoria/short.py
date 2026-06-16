@@ -63,6 +63,12 @@ class MemoriaShort:
                 chunk.topic_label = topic.label # set label for all topics
             if i in (1, 2): # searches for Topic2/3 at indexes 1/2
                 side_chunks.extend(topic.chunks)
+
+        # MID is fetched from the primary topic only (by design) → inherits its label,
+        # so every buffer chunk reaches KORTEX with a topic for trivial mapping
+        primary_label = result.topics[0].label if result.topics else None
+        for chunk in result.mid_chunks:
+            chunk.topic_label = primary_label
             
         side_available = len(side_chunks)
         side_allocated = min(side_available, SLOTS_SIDE)

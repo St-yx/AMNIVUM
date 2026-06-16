@@ -3,11 +3,15 @@ import json
 import asyncio
 import numpy as np
 from pathlib import Path
+from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from dataclasses import dataclass, field
 from sklearn.cluster import AgglomerativeClustering
 from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+
+if TYPE_CHECKING:
+    from nucleus.memoria.core import Chunk
 
 load_dotenv()
 
@@ -20,14 +24,17 @@ MID_CANDIDATES           = int(os.getenv("MEMORIA_MID_CANDIDATES", "30"))
 MID_RECENT_TURNS         = int(os.getenv("MEMORIA_MID_RECENT_TURNS", "5"))
 
 # == Topic detection ==================================================== #
-TOPIC_DISTANCE_THRESHOLD = float(os.getenv("MEMORIA_TOPIC_DISTANCE_THRESHOLD", "0.40"))
-TOPIC_MAX                = int(os.getenv("MEMORIA_TOPIC_MAX", "3"))
+TOPIC_DISTANCE_THRESHOLD  = float(os.getenv("MEMORIA_TOPIC_DISTANCE_THRESHOLD", "0.40"))
+TOPIC_MAX                 = int(os.getenv("MEMORIA_TOPIC_MAX", "3"))
+CLUSTER_MATCH_THRESHOLD   = float(os.getenv("MEMORIA_CLUSTER_MATCH_THRESHOLD", "0.55"))
 
 # == Source guarantees ================================================== #
 GUARANTEE_USER0          = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
-GUARANTEE_USER1          = int(os.getenv("MEMORIA_GUARANTEE_USER1", "8"))    # User
+GUARANTEE_USER1          = int(os.getenv("MEMORIA_GUARANTEE_USER1", "5"))    # User
 GUARANTEE_WORLD          = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # World
 
+COLLECTION_LONG           = str(os.getenv("COLLECTION_LONG", "memoria_long"))
+COLLECTION_MID            = str(os.getenv("COLLECTION_MID", "memoria_mid"))
 
 @dataclass
 class RetrievedChunk:
@@ -40,6 +47,7 @@ class RetrievedChunk:
     cluster_id:         str | None  # None for MID
     tags:               dict        # LONG: clean_tags, MID: raw_tags
     conflict_candidate: bool = False
+    topic_label:        str | None = None  # set in short.update(); MID inherits primary topic
 
 
 @dataclass
@@ -76,7 +84,7 @@ class MemoriaRetriever:
 
     async def retrieve(
         self,
-        turn_chunks: list[np.ndarray],
+        turn_chunks: list["Chunk"],
         current_turn_index: int,
     ) -> RetrievalResult:
         embeddings = [c.embedding for c in turn_chunks]
@@ -116,7 +124,7 @@ class MemoriaRetriever:
         self,
         embeddings: list[np.ndarray],
         texts:      list[str],
-    ) -> list[np.ndarray]:
+    ) -> list[tuple[np.ndarray, list[int]]]:
 
         # group chunks by Agglomerative Clustering (Cosine-Distance).
         # give one Weighted-Average-Vector per topic (max TOPIC_MAX).
@@ -195,8 +203,10 @@ class MemoriaRetriever:
                 best_sim = sim
                 best_id  = cluster_id
  
+        if best_sim < CLUSTER_MATCH_THRESHOLD:
+            return None
         return best_id
- 
+
     async def _query_long_cluster(
         self,
         topic_vec:  np.ndarray,
@@ -212,11 +222,12 @@ class MemoriaRetriever:
             conflicts = await loop.run_in_executor(
                 None,
                 lambda: self.vecdb.scroll(
-                    collection_name="LONG",
+                    collection_name=COLLECTION_LONG,
                     scroll_filter=Filter(must=[
                         FieldCondition(key="cluster_id",         match=MatchValue(value=cluster_id)),
                         FieldCondition(key="conflict_candidate", match=MatchValue(value=True)),
                     ]),
+                    limit=LONG_CANDIDATES_PRIMARY,
                     with_vectors=True,
                 )[0]
             )
@@ -239,7 +250,7 @@ class MemoriaRetriever:
             sim_results = await loop.run_in_executor(
                 None,
                 lambda: self.vecdb.search(
-                    collection_name="LONG",
+                    collection_name=COLLECTION_LONG,
                     query_vector=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id", match=MatchValue(value=cluster_id)),
@@ -276,7 +287,7 @@ class MemoriaRetriever:
             results = await loop.run_in_executor(
                 None,
                 lambda: self.vecdb.search(
-                    collection_name="LONG",
+                    collection_name=COLLECTION_LONG,
                     query_vector=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id",      match=MatchValue(value=cluster_id)),
@@ -329,7 +340,7 @@ class MemoriaRetriever:
         sim_results = await loop.run_in_executor(
             None,
             lambda: self.vecdb.search(
-                collection_name="MID",
+                collection_name=COLLECTION_MID,
                 query_vector=topic_vec.tolist(),
                 limit=MID_CANDIDATES,
                 with_payload=True,
@@ -347,13 +358,14 @@ class MemoriaRetriever:
         recent_results = await loop.run_in_executor(
             None,
             lambda: self.vecdb.scroll(
-                collection_name="MID",
+                collection_name=COLLECTION_MID,
                 scroll_filter=Filter(must=[
                     FieldCondition(
                         key="turn_index",
                         range=Range(gte=min_turn),
                     ),
                 ]),
+                limit=MID_CANDIDATES,
                 with_vectors=True,
             )[0]
         )
@@ -372,15 +384,17 @@ class MemoriaRetriever:
     
     def _point_to_chunk(self, point, source: str, ref_vec: np.ndarray) -> RetrievedChunk:
         payload = point.payload or {}
-        vec = getattr(point, "vector", None)
-        sim = self._cosine_similarity(ref_vec, np.array(vec)) if vec is not None else 0.0
+        score = getattr(point, "score", None)
+        if score is None:
+            vec = getattr(point, "vector", None)
+            score = self._cosine_similarity(ref_vec, np.array(vec)) if vec is not None else 0.0
 
         return RetrievedChunk(
             vecdb_id=           str(point.id),
             text=               payload.get("text", ""),
             source=             source,
             knowledge_source=   payload.get("knowledge_source", "unknown"),
-            similarity=         getattr(point, "score", sim),
+            similarity=         score,
             importance=         payload.get("importance", 0.0),
             cluster_id=         payload.get("cluster_id"),
             tags=         payload.get("clean_tags") or payload.get("raw_tags") or {},

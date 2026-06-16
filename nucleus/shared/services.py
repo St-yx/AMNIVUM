@@ -11,8 +11,8 @@ host = os.getenv("VECTOR_DB_HOST")
 port = int(os.getenv("VECTOR_DB_PORT"))
 model_name = os.getenv("EMBEDDING_MODEL")
 
-collection_long = os.getenv("COLLECTION_LONG")
-collection_mid  = os.getenv("COLLECTION_MID")
+collection_long = os.getenv("COLLECTION_LONG", "memoria_long")
+collection_mid  = os.getenv("COLLECTION_MID", "memoria_mid")
 vector_size     = int(os.getenv("VECTOR_SIZE"))
 
 classifier_model = os.getenv("CLASSIFIER_MODEL")
@@ -42,7 +42,10 @@ class Services:
         existing = [c.name for c in self.vecdb.get_collections().collections]
 
         for collection in (collection_long, collection_mid):
-            self.vecdb = self.vecdb.create_collection(
+            if collection in existing:
+                print(f"Collection {collection} found.")
+                continue
+            self.vecdb.create_collection(
                 collection_name=collection,
                 vectors_config=VectorParams(
                     size=vector_size,
@@ -50,5 +53,3 @@ class Services:
                 )
             )
             print(f"Collection {collection} initialized.")
-        else:
-            print(f"Collection {collection} found.")
