@@ -16,10 +16,19 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
 ]
 
 [tool.setuptools.packages.find]
 include = ["nucleus*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["nucleus"]
 
 [build-system]
 requires = ["setuptools"]

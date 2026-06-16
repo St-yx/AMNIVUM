@@ -8,3 +8,4 @@ numpy
 [dev]
 pytest
 pytest-asyncio
+pytest-cov

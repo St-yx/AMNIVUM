@@ -106,10 +106,7 @@ INGENIUM gibt Violet einen persistenten Gefühlszustand, der jede Antwort beeinf
 
 **INGENIUM-INTERPRETER** — ein mehrsprachiger Emotions-Klassifikator (XLM-RoBERTa-basiert, 11 Emotions-Dimensionen). Klassifiziert jeden Eingabe-Chunk und jeden LLM-Output-Chunk symmetrisch und erzeugt eine Wahrscheinlichkeitsverteilung über alle 11 Labels pro Chunk.
 
-**INGENIUM-AFFECT** — eine persistente JSON-Zustandsdatei mit drei Ebenen:
-- `global_affect` — langsam veränderlicher emotionaler Grundton, über alle Turns akkumuliert
-- `cluster_affect` — themenspezifische emotionale Haltung: wie Violet generell zu einem Themenbereich steht
-- `chunk_tags` — granulare Emotions-Vektoren pro Chunk mit Trust-, Quell- und Decay-Metadaten
+**INGENIUM-AFFECT** — eine persistente JSON-Zustandsdatei mit `global_affect`, ein langsam veränderlicher emotionaler Grundton, über alle Turns akkumuliert
 
 Der Affect-Zustand wird pro Turn in zwei Durchläufen aktualisiert: einmal vor dem Prompt-Bau (mit abgerufenen Clean-Tags), einmal nachdem KORTEX das vollständige Bild hat (mit Turn-Tags, Raw-Tags und Acceptance-Tags gewichtet zusammen).
 

@@ -106,10 +106,7 @@ INGENIUM gives Violet a persistent emotional state that influences every respons
 
 **INGENIUM-INTERPRETER** — a multilingual emotion classifier (XLM-RoBERTa-based, 11 emotion dimensions). Classifies every input chunk and every LLM output chunk symmetrically, producing a probability distribution across all 11 labels per chunk.
 
-**INGENIUM-AFFECT** — a persistent JSON state file with three layers:
-- `global_affect` — slow-moving emotional baseline accumulated across all turns
-- `cluster_affect` — per-topic emotional stance, how Violet generally feels about a subject area
-- `chunk_tags` — granular per-chunk emotion vectors with trust, source, and decay metadata
+**INGENIUM-AFFECT** — a persistent JSON state file containig `global_affect`, a slow-moving emotional baseline accumulated across all turns
 
 The affect state is updated in two passes per turn: once before the prompt is assembled (using retrieved clean tags), and once after KORTEX has the full picture (using turn tags, raw tags, and acceptance tags weighted together).
 

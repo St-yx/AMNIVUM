@@ -1,4 +1,4 @@
-LICENSE
+LICENSE.md
 README.md
 pyproject.toml
 amnivum.egg-info/PKG-INFO
@@ -7,11 +7,20 @@ amnivum.egg-info/dependency_links.txt
 amnivum.egg-info/requires.txt
 amnivum.egg-info/top_level.txt
 nucleus/main.py
+nucleus/ingenium/__init__.py
+nucleus/ingenium/affect.py
+nucleus/ingenium/interpreter.py
 nucleus/kortex/__init__.py
 nucleus/kortex/input_handler.py
 nucleus/memoria/__init__.py
 nucleus/memoria/core.py
+nucleus/memoria/retriever.py
+nucleus/memoria/short.py
 nucleus/shared/__init__.py
 nucleus/shared/messages.py
 nucleus/shared/queues.py
 nucleus/shared/services.py
+tests/test_kortex_input.py
+tests/test_memoria_core.py
+tests/test_memoria_short.py
+tests/test_messages.py
