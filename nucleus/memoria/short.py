@@ -7,7 +7,7 @@ load_dotenv()
 
 BUFFER_SIZE     = int(os.getenv("MEMORIA_BUFFER_SIZE", "20"))
 
-MID_CAP         = int(os.getenv("MEMORIA_MID_CAP", "20"))   # max MID-Slots in Buffer
+MID_CAP         = int(os.getenv("MEMORIA_MID_CAP", "5"))   # max MID-Slots in Buffer
 GUARANTEE_WORLD = int(os.getenv("MEMORIA_GUARANTEE_WORLD", "2"))   # World
 GUARANTEE_USER0 = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
 GUARANTEE_USER1 = int(os.getenv("MEMORIA_GUARANTEE_USER1", "5"))   # User
@@ -74,7 +74,7 @@ class MemoriaShort:
         side_allocated = min(side_available, SLOTS_SIDE)
         side_gap = SLOTS_SIDE - side_allocated
         
-        slots       = self._compose_template(result, extra_pass2=side_gap, side_allocated=side_allocated)
+        slots       = self._compose_template(result, extra_pass2=side_gap)
         selected    = self._map_chunks(result, slots, side_chunks, side_allocated)
 
         long_allocated = sum(s.allocated for s in slots if s.key != "mid")
@@ -88,7 +88,7 @@ class MemoriaShort:
     # Buffer Template                                                             #
     # =========================================================================== #
 
-    def _compose_template(self, result: RetrievalResult, extra_pass2: int, side_allocated: int) -> list[SlotDef]:
+    def _compose_template(self, result: RetrievalResult, extra_pass2: int) -> list[SlotDef]:
         # passing through knowledge-slots in chain MID → World → AI → User
         # setting mask for slot sizes in working array
 
@@ -116,7 +116,7 @@ class MemoriaShort:
                 self._round_robin_increase(diff, slots[i + 1:])
 
     # == Pass 2 ================================================================= #
-        core_budget = (BUFFER_SIZE - side_allocated) - sum(s.allocated for s in slots)
+        core_budget = (BUFFER_SIZE - SLOTS_SIDE) - sum(s.allocated for s in slots)
         remaining   = core_budget + extra_pass2
  
         soft_slots = [s for s in slots if s.positive_diff > 0]
@@ -164,6 +164,19 @@ class MemoriaShort:
         selected: list[RetrievedChunk]  = []
         seen_ids: set[str]              = set()
 
+        def add(chunks: list[RetrievedChunk], limit: int) -> None:
+            # add up to `limit` chunks, hard-capped by BUFFER_SIZE, dedup by id.
+            # the global cap makes buffer overflow structurally impossible.
+            room = min(limit, BUFFER_SIZE - len(selected))
+            for c in chunks:
+                if room <= 0:
+                    break
+                if c.vecdb_id in seen_ids:
+                    continue
+                selected.append(c)
+                seen_ids.add(c.vecdb_id)
+                room -= 1
+
         t1_chunks = result.topics[0].chunks if result.topics else []
         by_source: dict[str, list[RetrievedChunk]] = {
             "world": [], "user0": [], "user1": []
@@ -171,55 +184,32 @@ class MemoriaShort:
         for c in t1_chunks:
             ks = c.knowledge_source if c.knowledge_source in by_source else "user1"
             by_source[ks].append(c)
-                
+
         slot_map = {s.key: s for s in slots}
 
-        # == 1. Slots with conflicts ============================================ #
-        for pool in by_source.values():
-            for c in pool:
-                if c.conflict_candidate and c.vecdb_id not in seen_ids:
-                    selected.append(c)
-                    seen_ids.add(c.vecdb_id)
- 
-        # == 2. AI (user0) ====================================================== #
-        s = slot_map["ai"]
-        already = sum(1 for c in selected if c.knowledge_source == "user0")
-        remaining = s.allocated - already
-        if remaining > 0:
-            candidates = [c for c in by_source["user0"]
-                          if c.vecdb_id not in seen_ids]
-            picked = self._pick_by_importance(candidates, remaining)
-            selected.extend(picked)
-            seen_ids |= {c.vecdb_id for c in picked}
- 
-        # == 3. World =========================================================== #
-        s = slot_map["world"]
-        candidates = [c for c in by_source["world"]
-                      if c.vecdb_id not in seen_ids]
-        picked = self._pick_by_importance(candidates, s.allocated)
-        selected.extend(picked)
-        seen_ids |= {c.vecdb_id for c in picked}
- 
-        # == 4. User (user1) ==================================================== #
-        s = slot_map["user"]
-        candidates = [c for c in by_source["user1"]
-                      if c.vecdb_id not in seen_ids]
-        picked = self._pick_by_importance(candidates, s.allocated)
-        selected.extend(picked)
-        seen_ids |= {c.vecdb_id for c in picked}
+        # == 1. Conflict candidates (must-have, still bounded by BUFFER_SIZE) === #
+        conflicts = [c for pool in by_source.values() for c in pool if c.conflict_candidate]
+        add(self._pick_by_importance(conflicts, len(conflicts)), len(conflicts))
+
+        # == 2.-4. LONG source guarantees ====================================== #
+        # conflicts already selected count toward their source slot, so they no
+        # longer stack on top of the slot allocation
+        for key, ks in (("ai", "user0"), ("world", "world"), ("user", "user1")):
+            s = slot_map[key]
+            already   = sum(1 for c in selected if c.knowledge_source == ks)
+            remaining = max(0, s.allocated - already)
+            candidates = [c for c in by_source[ks] if c.vecdb_id not in seen_ids]
+            add(self._pick_by_importance(candidates, remaining), remaining)
 
         # == 5. Side (topic 2 + 3) ============================================== #
         candidates = [c for c in side_chunks if c.vecdb_id not in seen_ids]
-        picked = self._pick_by_importance(candidates, side_allocated)
-        selected.extend(picked)
-        seen_ids |= {c.vecdb_id for c in picked}
- 
-        # == 6. MID ============================================================= #
+        add(self._pick_by_importance(candidates, side_allocated), side_allocated)
+
+        # == 6. MID (lowest priority, absorbs any budget pressure) ============== #
         s = slot_map["mid"]
         candidates = [c for c in result.mid_chunks if c.vecdb_id not in seen_ids]
-        picked = self._pick_by_importance(candidates, s.allocated)
-        selected.extend(picked)
- 
+        add(self._pick_by_importance(candidates, s.allocated), s.allocated)
+
         return selected
     
     def _pick_by_importance(
