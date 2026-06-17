@@ -35,7 +35,7 @@ Jedes Modul ist ein Python-asyncio-Task. Die gemeinsame Message-Queue ist der ei
 
 *Das Projekt befindet sich noch in intensiver Entwicklung. Die Architektur ist größtenteils geplant und spezifiziert. Die Implementierung hat für einige Module begonnen. Änderungen können und werden eintreten, während das Projekt Form annimmt.*
 
-**Aktueller Code: 984 Zeilen Python**
+**Aktueller Code: 1347 Zeilen Python**
 
 ---
 
@@ -112,7 +112,7 @@ Der Affect-Zustand wird pro Turn in zwei Durchläufen aktualisiert: einmal vor d
 
 Die Drift-Erkennung vergleicht eingehende Emotions-Vektoren gegen die Cluster-Historie. Geringer Drift validiert den bestehenden Affect. Hoher Drift setzt ein Conflict-Flag an KORTEX, das eine Rückfrage-Sequenz des LLM auslösen kann.
 
-**Status:** Architektur zu 99% spezifiziert. Implementierung zu 25% (Interpreter experimentell).
+**Status:** Architektur zu 99% spezifiziert. Implementierung zu 40% (Interpreter + Affect-Update 1 experimentell).
 
 ---
 
@@ -184,5 +184,5 @@ AMNIVUM/
 
 - [ ] Qdrant-Collection-Schema und Metadaten-Felder finalisieren
 - [ ] Alle Similarity-Schwellwerte empirisch gegen echte Daten kalibrieren
-- [ ] INGENIUM-Affect-Update in den Turn-Zyklus einbinden
+- [ ] INGENIUM-Affect: Update 2 und Persistenz (Update 1 verdrahtet)
 - [ ] Offline-Konsolidierer und Eraser implementieren

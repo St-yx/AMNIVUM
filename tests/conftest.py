@@ -77,6 +77,7 @@ def make_retrieved_chunk():
         cluster_id=None,
         tags=None,
         conflict_candidate: bool = False,
+        topic_label=None,
     ) -> RetrievedChunk:
         return RetrievedChunk(
             vecdb_id=vecdb_id,
@@ -88,6 +89,7 @@ def make_retrieved_chunk():
             cluster_id=cluster_id,
             tags=tags if tags is not None else {},
             conflict_candidate=conflict_candidate,
+            topic_label=topic_label,
         )
     return _make
 

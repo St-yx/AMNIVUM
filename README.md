@@ -35,7 +35,7 @@ Each module is a Python asyncio task. The shared message queue is the only commu
 
 *The project ist still under heavy Development. Architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
 
-**Current Code: 984 lines Python**
+**Current Code: 1347 lines Python**
 
 ---
 
@@ -112,7 +112,7 @@ The affect state is updated in two passes per turn: once before the prompt is as
 
 Drift detection compares incoming emotion vectors against cluster history. Low drift validates the existing affect. High drift raises a conflict flag to KORTEX, which can trigger a clarification sequence from the LLM.
 
-**Status:** Architecture 99% specified. Implementation at 25% (Interpreter experimental).
+**Status:** Architecture 99% specified. Implementation at 40% (Interpreter + affect Update 1 experimental).
 
 ---
 
@@ -184,5 +184,5 @@ AMNIVUM/
 
 - [ ] Finalize Qdrant collection schema and metadata fields
 - [ ] Calibrate all similarity thresholds empirically against real data
-- [ ] Implement INGENIUM affect update into the turn cycle
+- [ ] INGENIUM affect: Update 2 and persistence (Update 1 wired)
 - [ ] Offline consolidator and eraser
