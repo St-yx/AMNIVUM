@@ -85,13 +85,22 @@ def test_pick_by_importance_sorts_and_limits(make_retrieved_chunk):
 
 # == hold_turn_chunks / receive_raw_tags ==================================== #
 
+def _hold(short, chunks, turn_id="t1", knowledge_source="user1", turn_index=0):
+    short.hold_turn_chunks(chunks, turn_id=turn_id,
+                           knowledge_source=knowledge_source, turn_index=turn_index)
+
+
 def test_hold_and_receive_raw_tags_roundtrip(make_retrieved_chunk):
     short = MemoriaShort()
     held = [make_retrieved_chunk(vecdb_id="a")]
-    short.hold_turn_chunks(held, turn_id="t1")
+    _hold(short, held, turn_id="t1", knowledge_source="user1", turn_index=3)
 
-    returned = short.receive_raw_tags({"joy": 0.9}, turn_id="t1")
-    assert returned is held
+    entry = short.receive_raw_tags({"joy": 0.9}, turn_id="t1")
+    assert entry is not None
+    assert entry.chunks is held
+    assert entry.knowledge_source == "user1"
+    assert entry.turn_index == 3
+    assert entry.raw_tags == {"joy": 0.9}
 
     # Nach dem Abholen ist das Pending geleert -> zweiter Aufruf gibt None.
     assert short.receive_raw_tags({"joy": 0.9}, turn_id="t1") is None
@@ -99,6 +108,24 @@ def test_hold_and_receive_raw_tags_roundtrip(make_retrieved_chunk):
 
 def test_receive_raw_tags_ignores_wrong_turn_id(make_retrieved_chunk):
     short = MemoriaShort()
-    short.hold_turn_chunks([make_retrieved_chunk(vecdb_id="a")], turn_id="t1")
+    _hold(short, [make_retrieved_chunk(vecdb_id="a")], turn_id="t1")
 
     assert short.receive_raw_tags({"joy": 0.9}, turn_id="other") is None
+
+
+def test_pending_keyed_by_turn_id(make_retrieved_chunk):
+    # Zwei Turns können gleichzeitig pending sein; falsche turn_id gibt nie den anderen zurück.
+    short = MemoriaShort()
+    a = [make_retrieved_chunk(vecdb_id="a")]
+    b = [make_retrieved_chunk(vecdb_id="b")]
+    _hold(short, a, turn_id="t1")
+    _hold(short, b, turn_id="t2")
+
+    entry_b = short.receive_raw_tags({"neutral": 1.0}, turn_id="t2")
+    assert entry_b is not None
+    assert entry_b.chunks is b
+
+    # t1 noch intakt
+    entry_a = short.receive_raw_tags({"joy": 0.5}, turn_id="t1")
+    assert entry_a is not None
+    assert entry_a.chunks is a

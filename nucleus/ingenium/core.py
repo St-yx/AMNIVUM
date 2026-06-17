@@ -35,6 +35,14 @@ class IngeniumCore:
                 chunks = message.payload["chunks"]
                 texts = [c.text for c in chunks]
                 turn.turn_tags = self.interpreter.classify(texts)
+                await self.queues.memoria_in.put(
+                    Message(
+                        type=MessageType.TURN_TAGS_READY,
+                        source="ingenium",
+                        payload={"raw_tags": turn.turn_tags},
+                        turn_id=message.turn_id,
+                    )
+                )
 
             elif message.type == MessageType.BUFFER_READY:
                 turn.buffer       = message.payload["chunks"]

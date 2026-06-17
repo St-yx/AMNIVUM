@@ -1,11 +1,13 @@
 import os
 import json
+import uuid
 import asyncio
 import numpy as np
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct
 from dataclasses import dataclass, field
 from sklearn.cluster import AgglomerativeClustering
 from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
@@ -22,6 +24,7 @@ LONG_CANDIDATES_PRIMARY  = int(os.getenv("MEMORIA_LONG_CANDIDATES_PRIMARY", "30"
 LONG_CANDIDATES_SIDE     = int(os.getenv("MEMORIA_LONG_CANDIDATES_SIDE", "10"))
 MID_CANDIDATES           = int(os.getenv("MEMORIA_MID_CANDIDATES", "30"))
 MID_RECENT_TURNS         = int(os.getenv("MEMORIA_MID_RECENT_TURNS", "5"))
+MID_NOVELTY_CANDIDATES   = int(os.getenv("MEMORIA_MID_NOVELTY_CANDIDATES", "5"))
 
 # == Topic detection ==================================================== #
 TOPIC_DISTANCE_THRESHOLD  = float(os.getenv("MEMORIA_TOPIC_DISTANCE_THRESHOLD", "0.40"))
@@ -377,6 +380,63 @@ class MemoriaRetriever:
  
         return chunks
     
+
+    # =========================================================================== #
+    # MID-Write                                                                   #
+    # =========================================================================== #
+
+    async def store_mid(self, entry, importance_gate: Callable) -> None:
+        loop = asyncio.get_event_loop()
+        chunks = entry.chunks
+        raw_tags_list: list[dict] = entry.raw_tags or [{} for _ in chunks]
+
+        async def novelty_vecs(chunk) -> list[np.ndarray]:
+            results = await loop.run_in_executor(
+                None,
+                lambda: self.vecdb.search(
+                    collection_name=COLLECTION_MID,
+                    query_vector=chunk.embedding.tolist(),
+                    limit=MID_NOVELTY_CANDIDATES,
+                    with_vectors=True,
+                    with_payload=False,
+                ),
+            )
+            return [np.array(p.vector) for p in results if p.vector is not None]
+
+        neighbor_lists = await asyncio.gather(*[novelty_vecs(c) for c in chunks])
+
+        points: list[PointStruct] = []
+        for chunk, raw_tags, cluster_vecs in zip(chunks, raw_tags_list, neighbor_lists):
+            if not importance_gate(chunk, raw_tags, cluster_vecs):
+                continue
+            non_neutral = {k: v for k, v in raw_tags.items() if k != "neutral"}
+            importance = max(non_neutral.values()) if non_neutral else 0.0
+            points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=chunk.embedding.tolist(),
+                    payload={
+                        "text":             chunk.text,
+                        "knowledge_source": entry.knowledge_source,
+                        "raw_tags":         raw_tags,
+                        "importance":       importance,
+                        "turn_index":       entry.turn_index,
+                        "topic_label":      chunk.topic_label,
+                        "cluster_id":       None,
+                    },
+                )
+            )
+
+        if not points:
+            return
+
+        await loop.run_in_executor(
+            None,
+            lambda: self.vecdb.upsert(
+                collection_name=COLLECTION_MID,
+                points=points,
+            ),
+        )
 
     # =========================================================================== #
     # Helpers                                                                     #

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from dataclasses import dataclass
 from nucleus.memoria.short import MemoriaShort
 from nucleus.memoria.retriever import MemoriaRetriever
+from nucleus.memoria.session_log import SessionLog
 from nucleus.shared import Message, MessageType, NucleusQueues, Services
 
 load_dotenv()
@@ -33,6 +34,7 @@ class MemoriaCore:
         self.vectordb = services.vecdb
         self.retriever = MemoriaRetriever(self.vectordb, GRAPH_PATH)
         self.short = MemoriaShort()
+        self.session_log = SessionLog()
         self.turn_index = 0
         self._turn_vec_window: list[np.ndarray] = []
 
@@ -41,6 +43,9 @@ class MemoriaCore:
             message = await self.queues.memoria_in.get()
 
             if message.type in (MessageType.USER_INPUT, MessageType.LLM_INPUT):
+
+                role = "user" if message.type == MessageType.USER_INPUT else "llm"
+                self.session_log.append(message.turn_id, role, message.payload["text"])
 
                 # 1. Chunking
                 chunks = await self.chunk(message.payload["text"])
@@ -77,7 +82,15 @@ class MemoriaCore:
                 selected = self.short.update(result)
 
                 # 9. Hold turn chunks for MID-writing (with INGENIUM-Tags from 5.)
-                self.short.hold_turn_chunks(chunks, message.turn_id)
+                knowledge_source = (
+                    "user1" if message.type == MessageType.USER_INPUT else "user0"
+                )
+                self.short.hold_turn_chunks(
+                    chunks,
+                    message.turn_id,
+                    knowledge_source=knowledge_source,
+                    turn_index=self.turn_index,
+                )
 
                 # 10. Buffer to INGENIUM for Affect Update 1
                 #     topic_labels carries the rank→label mapping (topic1 = primary,
@@ -107,12 +120,29 @@ class MemoriaCore:
                         payload={
                             "chunks": selected,
                             "topic_switch": topic_switch,
+                            "insufficient_knowledge": self.short.insufficient_knowledge,
                         },
                         turn_id=message.turn_id
                     )
                 )
 
                 self.turn_index += 1
+
+            elif message.type == MessageType.TURN_TAGS_READY:
+                raw_tags = message.payload["raw_tags"]
+                entry = self.short.receive_raw_tags(raw_tags, message.turn_id)
+                if entry is not None:
+                    asyncio.create_task(
+                        self._write_mid(entry),
+                        name=f"mid-write-{message.turn_id}",
+                    )
+
+    async def _write_mid(self, entry) -> None:
+        try:
+            await self.retriever.store_mid(entry, self._importance_gate)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("MID-write failed for turn %s: %s", entry.turn_id, exc)
 
     async def embed(self, texts:list[str]) -> np.ndarray:
         loop = asyncio.get_event_loop()

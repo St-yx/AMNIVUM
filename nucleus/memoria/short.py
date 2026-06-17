@@ -33,23 +33,28 @@ class SlotDef:
         # cap has more space then available chunks (hard)
         return max(0, self.cap - self.allocated)
 
+_MAX_PENDING = 16  # evict oldest if turns pile up without TURN_TAGS_READY
+
+
 @dataclass
 class PendingTurnChunks:
     # chunks wait for INGENIUM raw_tags
-    chunks:     list
-    turn_id:    str
-    raw_tags:   dict | None = None
+    chunks:           list
+    turn_id:          str
+    knowledge_source: str
+    turn_index:       int
+    raw_tags:         list[dict] | None = None
 
     @property
     def ready(self) -> bool:
         return self.raw_tags is not None
-    
+
 
 class MemoriaShort:
     def __init__(self):
         self.buffer: list[RetrievedChunk] = []
         self.insufficient_knowledge: bool = False
-        self._pending: PendingTurnChunks | None = None
+        self._pending: dict[str, PendingTurnChunks] = {}
 
 
     # =========================================================================== #
@@ -224,14 +229,26 @@ class MemoriaShort:
     # Turn-Chunk-Holding                                                          #
     # =========================================================================== #
 
-    def hold_turn_chunks(self, chunks: list, turn_id: str) -> None:
-        self._pending = PendingTurnChunks(chunks=chunks, turn_id=turn_id)
+    def hold_turn_chunks(
+        self,
+        chunks: list,
+        turn_id: str,
+        knowledge_source: str,
+        turn_index: int,
+    ) -> None:
+        if len(self._pending) >= _MAX_PENDING:
+            oldest = next(iter(self._pending))
+            del self._pending[oldest]
+        self._pending[turn_id] = PendingTurnChunks(
+            chunks=chunks,
+            turn_id=turn_id,
+            knowledge_source=knowledge_source,
+            turn_index=turn_index,
+        )
 
-    def receive_raw_tags(self, raw_tags:dict, turn_id: str) -> list | None:
-        if self._pending is None or self._pending.turn_id != turn_id:
+    def receive_raw_tags(self, raw_tags: list[dict], turn_id: str) -> PendingTurnChunks | None:
+        entry = self._pending.pop(turn_id, None)
+        if entry is None:
             return None
-        
-        self._pending.raw_tags = raw_tags
-        chunks = self._pending.chunks
-        self._pending = None
-        return chunks
+        entry.raw_tags = raw_tags
+        return entry
