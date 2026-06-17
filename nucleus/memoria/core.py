@@ -80,13 +80,21 @@ class MemoriaCore:
                 self.short.hold_turn_chunks(chunks, message.turn_id)
 
                 # 10. Buffer to INGENIUM for Affect Update 1
+                #     topic_labels carries the rank→label mapping (topic1 = primary,
+                #     result.topics is sorted by group size) so INGENIUM can weight
+                #     by topic priority without re-deriving rank from labels.
+                topic_labels = {
+                    f"topic{i + 1}": (result.topics[i].label if i < len(result.topics) else None)
+                    for i in range(3)
+                }
                 await self.queues.ingenium_in.put(
                     Message(
                         type=MessageType.BUFFER_READY,
                         source="memoria",
-                        payload={"chunks":      selected, # selected memory chunks (LONG/MID) from buffer
-                                 "turn_chunks": chunks,   # raw turn chunks with topic_label
-                        }, 
+                        payload={"chunks":       selected, # selected memory chunks (LONG/MID) from buffer
+                                 "turn_chunks":  chunks,    # raw turn chunks with topic_label
+                                 "topic_labels": topic_labels,
+                        },
                         turn_id=message.turn_id
                     )
                 )

@@ -35,7 +35,7 @@ Each module is a Python asyncio task. The shared message queue is the only commu
 
 *The project ist still under heavy Development. Architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
 
-**Current Code: 796 lines Python**
+**Current Code: 984 lines Python**
 
 ---
 
