@@ -9,3 +9,4 @@ numpy
 pytest
 pytest-asyncio
 pytest-cov
+pyright

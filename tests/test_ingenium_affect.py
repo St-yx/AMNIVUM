@@ -153,3 +153,95 @@ def test_empty_buffer_keeps_baseline_as_mood(tmp_path, make_chunk):
     )
     # kein Wissen -> kein Nudge -> current_affect == global_affect
     assert _approx_eq(out["current_affect"], DEFAULT_AFFECT)
+
+
+# == Update 2 =============================================================== #
+
+async def test_update_2_llm_imprints_stronger_than_user(tmp_path, make_chunk):
+    """LLM-Quelle prägt stärker als user (WEIGHT_TURN_LLM=0.8 > WEIGHT_TURN_USER=0.3)."""
+    turn_tags   = [_vec(anger=1.0)]
+    turn_chunks = [make_chunk("wut wut wut wut wut", topic_label="A")]
+    acceptance  = {k: 0.5 for k in LABELS}
+
+    au_llm = _updater(tmp_path)
+    base   = dict(au_llm.state["global_affect"])
+    await au_llm.update_2(turn_tags, turn_chunks, acceptance, source="llm")
+
+    au_user = _updater(tmp_path)
+    au_user.state["global_affect"] = dict(base)
+    await au_user.update_2(turn_tags, turn_chunks, acceptance, source="user")
+
+    llm_shift  = abs(au_llm.state["global_affect"]["anger"]  - base["anger"])
+    user_shift = abs(au_user.state["global_affect"]["anger"] - base["anger"])
+    assert llm_shift > user_shift > 0
+
+
+async def test_update_2_high_acceptance_produces_stronger_shift(tmp_path, make_chunk):
+    """Hoher acceptance_scalar → stärkere Einprägung; 0.0 → keine Änderung."""
+    base        = DEFAULT_AFFECT.copy()
+    turn_tags   = [_vec(anger=1.0)]
+    turn_chunks = [make_chunk("wut wut wut wut wut", topic_label="A")]
+
+    au_high = _updater(tmp_path)
+    au_high.state["global_affect"] = dict(base)
+    await au_high.update_2(turn_tags, turn_chunks,
+                            {k: 1.0 for k in LABELS}, source="user")
+
+    au_low = _updater(tmp_path)
+    au_low.state["global_affect"] = dict(base)
+    await au_low.update_2(turn_tags, turn_chunks,
+                           {k: 0.0 for k in LABELS}, source="user")
+
+    high_shift = abs(au_high.state["global_affect"]["anger"] - base["anger"])
+    low_shift  = abs(au_low.state["global_affect"]["anger"]  - base["anger"])
+    assert high_shift > low_shift
+
+
+async def test_update_2_moves_toward_turn_avg(tmp_path, make_chunk):
+    """global_affect verschiebt sich in Richtung turn_avg."""
+    au       = _updater(tmp_path)
+    base_joy = au.state["global_affect"]["joy"]
+
+    turn_tags   = [_vec(joy=1.0)]
+    turn_chunks = [make_chunk("freude freude freude freude freude", topic_label="A")]
+    await au.update_2(turn_tags, turn_chunks, {k: 1.0 for k in LABELS}, source="llm")
+
+    assert au.state["global_affect"]["joy"] > base_joy
+
+
+async def test_update_2_persists_affect_json(tmp_path, make_chunk):
+    """Nach update_2 existiert affect.json mit global_affect + last_updated."""
+    import json as _json
+
+    path = tmp_path / "affect.json"
+    au   = AffectUpdater(path)
+
+    assert not path.exists()
+    await au.update_2(
+        turn_tags=[_vec(joy=0.5)],
+        turn_chunks=[make_chunk("einfach so wie immer hier", topic_label="A")],
+        acceptance_tags={k: 0.5 for k in LABELS},
+        source="user",
+    )
+
+    assert path.exists()
+    data = _json.loads(path.read_text(encoding="utf-8"))
+    assert "global_affect" in data and "last_updated" in data
+    assert set(data["global_affect"]) == set(LABELS)
+
+
+async def test_update_2_reload_round_trip(tmp_path, make_chunk):
+    """_load() nach update_2 liefert identischen Zustand zurück."""
+    path = tmp_path / "affect.json"
+    au   = AffectUpdater(path)
+
+    await au.update_2(
+        turn_tags=[_vec(anger=0.9)],
+        turn_chunks=[make_chunk("stark stark stark stark stark", topic_label="A")],
+        acceptance_tags={k: 1.0 for k in LABELS},
+        source="llm",
+    )
+    saved = dict(au.state["global_affect"])
+
+    au2 = AffectUpdater(path)
+    assert _approx_eq(au2.state["global_affect"], saved)

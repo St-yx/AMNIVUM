@@ -107,6 +107,8 @@ class MemoriaCore:
                         payload={"chunks":       selected, # selected memory chunks (LONG/MID) from buffer
                                  "turn_chunks":  chunks,    # raw turn chunks with topic_label
                                  "topic_labels": topic_labels,
+                                 "source":       role,          # "user" or "llm"
+                                 "topic_switch": topic_switch,  # True when conversation topic changed
                         },
                         turn_id=message.turn_id
                     )

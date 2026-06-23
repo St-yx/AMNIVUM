@@ -1,5 +1,7 @@
 import os
 import json
+import asyncio
+import tempfile
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -26,6 +28,11 @@ LEARNING_RATE  = float(os.getenv("AFFECT_LEARNING_RATE", "0.05"))
 ACCEPT_GLOBAL  = float(os.getenv("ACCEPT_WEIGHT_GLOBAL", "0.6"))
 ACCEPT_TURN    = float(os.getenv("ACCEPT_WEIGHT_TURN", "0.4"))
 DRIFT_HIGH     = float(os.getenv("DRIFT_HIGH", "0.45"))
+DRIFT_LOW      = float(os.getenv("DRIFT_LOW", "0.15"))
+
+# == Update 2 turn-source weighting ========================================= #
+WEIGHT_TURN_LLM  = float(os.getenv("AFFECT_WEIGHT_TURN_LLM",  "0.8"))
+WEIGHT_TURN_USER = float(os.getenv("AFFECT_WEIGHT_TURN_USER", "0.3"))
 
 SOURCE_WEIGHTS = {"user0": WEIGHT_AI, "world": WEIGHT_WORLD, "user1": WEIGHT_USER}
 
@@ -106,6 +113,56 @@ class AffectUpdater:
             "drift":           float(drift),
             "flags":           flags,
         }
+
+    # =========================================================================== #
+    # Update 2 — embed gelebtes Erlebnis in global_affect (non-blocking)         #
+    # =========================================================================== #
+
+    async def update_2(
+        self,
+        turn_tags:       list[dict],
+        turn_chunks:     list,
+        acceptance_tags: dict,
+        source:          str,   # "user" | "llm"
+    ) -> None:
+        global_vec        = self._to_array(self.state["global_affect"])
+        turn_avg          = self._turn_average(turn_tags, turn_chunks)
+        turn_weight       = WEIGHT_TURN_LLM if source == "llm" else WEIGHT_TURN_USER
+        acceptance_scalar = (sum(acceptance_tags.values()) / len(acceptance_tags)
+                             if acceptance_tags else 0.0)
+        effective_weight  = turn_weight * acceptance_scalar
+
+        global_new = (
+            global_vec * (1.0 - LEARNING_RATE * effective_weight)
+            + turn_avg * LEARNING_RATE * effective_weight
+        )
+
+        # mutate state before any await so the next turn's Update 1 sees consistent data
+        self.state["global_affect"] = self._to_dict(global_new)
+        self.state["last_updated"]  = datetime.now().isoformat()
+
+        await self._persist()
+
+    async def _persist(self) -> None:
+        data = json.dumps(self.state, indent=2)
+        path = self.affect_path
+
+        def _write() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(data)
+                os.replace(tmp, path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write)
 
     # =========================================================================== #
     # Helpers                                                                     #

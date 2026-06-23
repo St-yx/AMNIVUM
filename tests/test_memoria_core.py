@@ -5,10 +5,14 @@ bekommt ein `fake_services` (Stub-Embedder, vecdb=None). Die getesteten Methoden
 sind deterministisch — Embeddings werden für die meisten Tests von Hand vorgegeben.
 """
 
+import asyncio
 import numpy as np
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from nucleus.memoria.core import MemoriaCore
+from nucleus.memoria.retriever import RetrievalResult
+from nucleus.shared.messages import Message, MessageType
 
 
 @pytest.fixture
@@ -133,3 +137,34 @@ async def test_chunk_returns_chunks_for_single_sentence(core):
     assert chunks[0].text == "This is a single test sentence here."
     # Embedding-Dimension stammt aus dem Fake-Embedder (8).
     assert chunks[0].embedding.shape == (8,)
+
+
+# == Plumbing: source + topic_switch in ingenium-BUFFER_READY =============== #
+
+async def test_ingenium_buffer_ready_includes_source_and_topic_switch(core, queues):
+    """ingenium-BUFFER_READY enthält 'source' und 'topic_switch' im Payload."""
+    empty_result = RetrievalResult(topics=[], mid_chunks=[], turn_chunk_labels={})
+
+    with patch.object(core.retriever, "retrieve", new=AsyncMock(return_value=empty_result)), \
+         patch.object(core.session_log, "append"):
+        await queues.memoria_in.put(Message(
+            type=MessageType.USER_INPUT,
+            source="kortex",
+            payload={"text": "hallo welt wie geht es dir heute"},
+            turn_id="t-src",
+        ))
+        task = asyncio.create_task(core.run())
+        try:
+            msg1 = await asyncio.wait_for(queues.ingenium_in.get(), timeout=2.0)
+            msg2 = await asyncio.wait_for(queues.ingenium_in.get(), timeout=2.0)
+        finally:
+            task.cancel()
+            await asyncio.sleep(0)   # Cancellation propagieren lassen
+
+    msgs = {m.type: m for m in [msg1, msg2]}
+    buf  = msgs.get(MessageType.BUFFER_READY)
+    assert buf is not None, "Kein BUFFER_READY auf ingenium_in empfangen"
+    assert "source"       in buf.payload
+    assert "topic_switch" in buf.payload
+    assert buf.payload["source"] == "user"
+    assert isinstance(buf.payload["topic_switch"], bool)

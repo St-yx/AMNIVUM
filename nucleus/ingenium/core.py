@@ -1,8 +1,14 @@
+import asyncio
+import logging
 from pathlib import Path
 from dataclasses import dataclass
 from nucleus.ingenium.affect import AffectUpdater
 from nucleus.ingenium.interpreter import Interpreter
 from nucleus.shared import Message, MessageType, NucleusQueues, Services
+
+logger = logging.getLogger(__name__)
+
+_MAX_PENDING = 16  # evict oldest if turns pile up without BUFFER_READY
 
 
 @dataclass
@@ -12,6 +18,8 @@ class PendingTurn:
     buffer:       list | None = None   # set after BUFFER_READY
     turn_chunks:  list | None = None
     topic_labels: dict | None = None
+    source:       str | None = None    # "user" or "llm" — from BUFFER_READY payload
+    topic_switch: bool = False         # from BUFFER_READY payload; freeze logic deferred (2.4)
 
     @property
     def ready(self) -> bool:
@@ -29,6 +37,11 @@ class IngeniumCore:
     async def run(self):
         while True:
             message = await self.queues.ingenium_in.get()
+
+            if message.turn_id not in self._pending and len(self._pending) >= _MAX_PENDING:
+                oldest = next(iter(self._pending))
+                del self._pending[oldest]
+
             turn = self._pending.setdefault(message.turn_id, PendingTurn())
 
             if message.type == MessageType.CHUNK_READY:
@@ -45,9 +58,11 @@ class IngeniumCore:
                 )
 
             elif message.type == MessageType.BUFFER_READY:
-                turn.buffer       = message.payload["chunks"]
-                turn.turn_chunks  = message.payload["turn_chunks"]
-                turn.topic_labels = message.payload["topic_labels"]
+                turn.buffer        = message.payload["chunks"]
+                turn.turn_chunks   = message.payload["turn_chunks"]
+                turn.topic_labels  = message.payload["topic_labels"]
+                turn.source        = message.payload.get("source", "user")
+                turn.topic_switch  = message.payload.get("topic_switch", False)
 
             else:
                 continue
@@ -71,3 +86,20 @@ class IngeniumCore:
                 turn_id=turn_id,
             )
         )
+        asyncio.create_task(
+            self._fire_update_2(turn_id, turn, payload["acceptance_tags"]),
+            name=f"affect-update2-{turn_id}",
+        )
+
+    async def _fire_update_2(
+        self, turn_id: str, turn: PendingTurn, acceptance_tags: dict
+    ) -> None:
+        try:
+            await self.affect.update_2(
+                turn_tags=turn.turn_tags,
+                turn_chunks=turn.turn_chunks,
+                acceptance_tags=acceptance_tags,
+                source=turn.source or "user",
+            )
+        except Exception as exc:
+            logger.error("Update 2 failed for turn %s: %s", turn_id, exc)

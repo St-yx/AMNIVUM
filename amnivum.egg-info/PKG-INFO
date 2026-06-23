@@ -13,4 +13,5 @@ Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-asyncio; extra == "dev"
 Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: pyright; extra == "dev"
 Dynamic: license-file

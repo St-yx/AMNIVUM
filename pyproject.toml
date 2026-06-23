@@ -17,6 +17,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "pyright",
 ]
 
 [tool.setuptools.packages.find]
