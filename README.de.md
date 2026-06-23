@@ -35,7 +35,7 @@ Jedes Modul ist ein Python-asyncio-Task. Die gemeinsame Message-Queue ist der ei
 
 *Das Projekt befindet sich noch in intensiver Entwicklung. Die Architektur ist größtenteils geplant und spezifiziert. Die Implementierung hat für einige Module begonnen. Änderungen können und werden eintreten, während das Projekt Form annimmt.*
 
-**Aktueller Code: 1347 Zeilen Python**
+**Aktueller Code: 1590 Zeilen Python**
 
 ---
 

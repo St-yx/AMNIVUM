@@ -1,5 +1,5 @@
 {
-  "include": ["nucleus", "tests"],
+  "include": ["nucleus"],
   "pythonVersion": "3.14",
   "typeCheckingMode": "basic"
 }
