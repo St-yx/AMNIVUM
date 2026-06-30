@@ -22,14 +22,14 @@ BUFFER_SIZE              = int(os.getenv("MEMORIA_BUFFER_SIZE", "20"))
 # == Candidate pool ===================================================== #
 LONG_CANDIDATES_PRIMARY  = int(os.getenv("MEMORIA_LONG_CANDIDATES_PRIMARY", "30"))
 LONG_CANDIDATES_SIDE     = int(os.getenv("MEMORIA_LONG_CANDIDATES_SIDE", "10"))
-MID_CANDIDATES           = int(os.getenv("MEMORIA_MID_CANDIDATES", "30"))
+MID_CANDIDATES           = int(os.getenv("MEMORIA_MID_CANDIDATES", "20"))
 MID_RECENT_TURNS         = int(os.getenv("MEMORIA_MID_RECENT_TURNS", "5"))
 MID_NOVELTY_CANDIDATES   = int(os.getenv("MEMORIA_MID_NOVELTY_CANDIDATES", "5"))
 
 # == Topic detection ==================================================== #
 TOPIC_DISTANCE_THRESHOLD  = float(os.getenv("MEMORIA_TOPIC_DISTANCE_THRESHOLD", "0.40"))
 TOPIC_MAX                 = int(os.getenv("MEMORIA_TOPIC_MAX", "3"))
-CLUSTER_MATCH_THRESHOLD   = float(os.getenv("MEMORIA_CLUSTER_MATCH_THRESHOLD", "0.55"))
+CLUSTER_MATCH_THRESHOLD   = float(os.getenv("MEMORIA_CLUSTER_MATCH_THRESHOLD", "0.45"))
 
 # == Source guarantees ================================================== #
 GUARANTEE_USER0          = int(os.getenv("MEMORIA_GUARANTEE_USER0", "3"))   # AI
@@ -252,16 +252,16 @@ class MemoriaRetriever:
         if remaining > 0:
             sim_results = await loop.run_in_executor(
                 None,
-                lambda: self.vecdb.search(
+                lambda: self.vecdb.query_points(
                     collection_name=COLLECTION_LONG,
-                    query_vector=topic_vec.tolist(),
+                    query=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id", match=MatchValue(value=cluster_id)),
                     ]),
                     limit=limit,
                     with_payload=True,
                     with_vectors=False,
-                )
+                ).points
             )
             for point in sim_results:
                 if str(point.id) not in seen_ids:
@@ -289,9 +289,9 @@ class MemoriaRetriever:
         async def query_source(knowledge_source: str, limit: int) -> list[RetrievedChunk]:
             results = await loop.run_in_executor(
                 None,
-                lambda: self.vecdb.search(
+                lambda: self.vecdb.query_points(
                     collection_name=COLLECTION_LONG,
-                    query_vector=topic_vec.tolist(),
+                    query=topic_vec.tolist(),
                     query_filter=Filter(must=[
                         FieldCondition(key="cluster_id",      match=MatchValue(value=cluster_id)),
                         FieldCondition(key="knowledge_source",match=MatchValue(value=knowledge_source)),
@@ -299,7 +299,7 @@ class MemoriaRetriever:
                     limit=limit,
                     with_payload=True,
                     with_vectors=False,
-                )
+                ).points
             )
             return [
                 self._point_to_chunk(p, "LONG", topic_vec)
@@ -342,13 +342,13 @@ class MemoriaRetriever:
         # Similarity
         sim_results = await loop.run_in_executor(
             None,
-            lambda: self.vecdb.search(
+            lambda: self.vecdb.query_points(
                 collection_name=COLLECTION_MID,
-                query_vector=topic_vec.tolist(),
+                query=topic_vec.tolist(),
                 limit=MID_CANDIDATES,
                 with_payload=True,
                 with_vectors=False,
-            )
+            ).points
         )
         for point in sim_results:
             pid = str(point.id)
@@ -393,13 +393,13 @@ class MemoriaRetriever:
         async def novelty_vecs(chunk) -> list[np.ndarray]:
             results = await loop.run_in_executor(
                 None,
-                lambda: self.vecdb.search(
+                lambda: self.vecdb.query_points(
                     collection_name=COLLECTION_MID,
-                    query_vector=chunk.embedding.tolist(),
+                    query=chunk.embedding.tolist(),
                     limit=MID_NOVELTY_CANDIDATES,
                     with_vectors=True,
                     with_payload=False,
-                ),
+                ).points,
             )
             return [np.array(p.vector) for p in results if p.vector is not None]
 

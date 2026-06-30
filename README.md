@@ -33,9 +33,9 @@ AMNIVUM is the technical stack that "produces" Violet. It consists of independen
 
 Each module is a Python asyncio task. The shared message queue is the only communication channel.
 
-*The project ist still under heavy Development. Architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
+*The project is still under heavy Development. Architecture is mostly planned and specified. Implementation has started for some Modules. Changes can and will happen as the project takes shape.*
 
-**Current Code: 1590 lines Python**
+**Current Code: ~1570 lines (nucleus) + ~1240 lines tests**
 
 ---
 
@@ -108,11 +108,11 @@ INGENIUM gives Violet a persistent emotional state that influences every respons
 
 **INGENIUM-AFFECT** — a persistent JSON state file containig `global_affect`, a slow-moving emotional baseline accumulated across all turns
 
-The affect state is updated in two passes per turn: once before the prompt is assembled (using retrieved clean tags), and once after KORTEX has the full picture (using turn tags, raw tags, and acceptance tags weighted together).
+The affect state is updated in two passes per turn: once before the prompt is assembled (a transient mood from retrieved tags, with the persistent baseline left untouched), and once afterward — folding the turn's own emotion into the persistent baseline, weighted by source (Violet's own words count more than the user's) and acceptance, then persisting it.
 
 Drift detection compares incoming emotion vectors against cluster history. Low drift validates the existing affect. High drift raises a conflict flag to KORTEX, which can trigger a clarification sequence from the LLM.
 
-**Status:** Architecture 99% specified. Implementation at 40% (Interpreter + affect Update 1 experimental).
+**Status:** Architecture 99% specified. Implementation at ~55% (Interpreter + affect Update 1 & 2 incl. persistence, experimental; drift accumulator and offline scoring still open).
 
 ---
 
@@ -182,7 +182,8 @@ AMNIVUM/
 
 ## Next Open Points
 
+- [x] INGENIUM affect: Update 1 + Update 2 with persistence — wired
+- [ ] KORTEX assembler + LLM call + real `main.py` loop (rest of the online path is wired)
 - [ ] Finalize Qdrant collection schema and metadata fields
-- [ ] Calibrate all similarity thresholds empirically against real data
-- [ ] INGENIUM affect: Update 2 and persistence (Update 1 wired)
+- [ ] Calibrate similarity thresholds empirically against real data
 - [ ] Offline consolidator and eraser

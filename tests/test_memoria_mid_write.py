@@ -1,6 +1,6 @@
 """Tests für store_mid() in MemoriaRetriever und den insufficient_knowledge-Payload.
 
-Nutzt einen Fake-VecDB, der search/upsert aufzeichnet, ohne Qdrant.
+Nutzt einen Fake-VecDB, der query_points/upsert aufzeichnet, ohne Qdrant.
 """
 
 import asyncio
@@ -23,15 +23,15 @@ class _FakeVecDB:
         self._neighbors = neighbors or []  # list of np.ndarray returned as "near vectors"
         self.upserted: list = []
 
-    def search(self, collection_name, query_vector, limit, with_vectors, with_payload=True):
-        # return fake neighbor points
+    def query_points(self, collection_name, query, limit, with_vectors, with_payload=True):
+        # return fake neighbor points wrapped like a QueryResponse (.points)
         class _P:
             def __init__(self, vec):
                 self.vector = vec.tolist()
                 self.id = "fake"
                 self.payload = {}
                 self.score = 0.5
-        return [_P(v) for v in self._neighbors]
+        return SimpleNamespace(points=[_P(v) for v in self._neighbors])
 
     def upsert(self, collection_name, points):
         self.upserted.extend(points)

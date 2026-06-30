@@ -35,7 +35,7 @@ Jedes Modul ist ein Python-asyncio-Task. Die gemeinsame Message-Queue ist der ei
 
 *Das Projekt befindet sich noch in intensiver Entwicklung. Die Architektur ist größtenteils geplant und spezifiziert. Die Implementierung hat für einige Module begonnen. Änderungen können und werden eintreten, während das Projekt Form annimmt.*
 
-**Aktueller Code: 1590 Zeilen Python**
+**Aktueller Code: ~1570 Zeilen (nucleus) + ~1240 Zeilen Tests**
 
 ---
 
@@ -108,11 +108,11 @@ INGENIUM gibt Violet einen persistenten Gefühlszustand, der jede Antwort beeinf
 
 **INGENIUM-AFFECT** — eine persistente JSON-Zustandsdatei mit `global_affect`, ein langsam veränderlicher emotionaler Grundton, über alle Turns akkumuliert
 
-Der Affect-Zustand wird pro Turn in zwei Durchläufen aktualisiert: einmal vor dem Prompt-Bau (mit abgerufenen Clean-Tags), einmal nachdem KORTEX das vollständige Bild hat (mit Turn-Tags, Raw-Tags und Acceptance-Tags gewichtet zusammen).
+Der Affect-Zustand wird pro Turn in zwei Durchläufen aktualisiert: einmal vor dem Prompt-Bau (eine transiente Stimmung aus abgerufenen Tags, die persistente Baseline bleibt unangetastet), und einmal danach — die eigene Emotion des Turns wird in die persistente Baseline eingefaltet, gewichtet nach Quelle (Violets eigene Worte zählen mehr als die des Users) und Akzeptanz, dann persistiert.
 
 Die Drift-Erkennung vergleicht eingehende Emotions-Vektoren gegen die Cluster-Historie. Geringer Drift validiert den bestehenden Affect. Hoher Drift setzt ein Conflict-Flag an KORTEX, das eine Rückfrage-Sequenz des LLM auslösen kann.
 
-**Status:** Architektur zu 99% spezifiziert. Implementierung zu 40% (Interpreter + Affect-Update 1 experimentell).
+**Status:** Architektur zu 99% spezifiziert. Implementierung bei ~55% (Interpreter + Affect-Update 1 & 2 inkl. Persistenz experimentell; Drift-Akkumulator und Offline-Scoring offen).
 
 ---
 
@@ -182,7 +182,8 @@ AMNIVUM/
 
 ## Offene Punkte
 
+- [x] INGENIUM-Affect: Update 1 + Update 2 mit Persistenz — verdrahtet
+- [ ] KORTEX-Assembler + LLM-Call + echte main.py-Schleife (restlicher Online-Pfad verdrahtet)
 - [ ] Qdrant-Collection-Schema und Metadaten-Felder finalisieren
 - [ ] Alle Similarity-Schwellwerte empirisch gegen echte Daten kalibrieren
-- [ ] INGENIUM-Affect: Update 2 und Persistenz (Update 1 verdrahtet)
 - [ ] Offline-Konsolidierer und Eraser implementieren
